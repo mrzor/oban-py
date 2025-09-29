@@ -1,18 +1,17 @@
 import pytest
-from typing import Any
 
+import oban
 from oban.job import Job
-from oban.worker import worker
-from oban.types import Result, JobState
 
 
 class TestWorkerDecorator:
     @pytest.fixture
     def basic_worker(self):
-        @worker(queue="test_queue", max_attempts=5)
+        @oban.worker(queue="test_queue", max_attempts=5)
         class TestWorker:
             def perform(self, _job):
                 return None
+
         return TestWorker
 
     def test_creates_job_with_correct_attributes(self, basic_worker):

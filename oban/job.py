@@ -1,5 +1,6 @@
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
+import json
+from dataclasses import asdict, dataclass, field
+from datetime import datetime
 from typing import Any
 
 from .types import JobState
@@ -19,8 +20,20 @@ class Job:
     errors: tuple[str, ...] = ()
     tags: tuple[str, ...] = ()
     attempted_by: tuple[str, ...] = ()
-    scheduled_at: datetime | None = None
+    inserted_at: datetime | None = None
     attempted_at: datetime | None = None
+    cancelled_at: datetime | None = None
     completed_at: datetime | None = None
     discarded_at: datetime | None = None
-    cancelled_at: datetime | None = None
+    scheduled_at: datetime | None = None
+
+    def to_dict(self) -> dict:
+        data = asdict(self)
+
+        data["args"] = json.dumps(data["args"])
+        data["meta"] = json.dumps(data["meta"])
+        data["errors"] = json.dumps(list(data["errors"]))
+        data["tags"] = json.dumps(list(data["tags"]))
+        data["attempted_by"] = list(data["attempted_by"])
+
+        return data
