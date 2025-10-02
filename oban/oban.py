@@ -41,9 +41,9 @@ class Oban:
             A decorator function that can be applied to worker classes
 
         Example:
-            >>> oban_instance = Oban(queues={"default": 10, "mailers": 5})
+            >>> oban = Oban(queues={"default": 10, "mailers": 5})
 
-            >>> @oban_instance.worker(queue="mailers", priority=1)
+            >>> @oban.worker(queue="mailers", priority=1)
             ... class EmailWorker:
             ...     def perform(self, job):
             ...         # Send email logic here
@@ -62,9 +62,22 @@ class Oban:
             ... )
             >>> print(job.priority)  # 5
 
+            >>> # Custom backoff for retries
+            >>> @oban.worker(queue="default")
+            ... class CustomBackoffWorker:
+            ...     def perform(self, job):
+            ...         return None
+            ...
+            ...     def backoff(self, job):
+            ...         # Simple linear backoff at 2x the attempt number
+            ...         return 2 * job.attempt
+
         Note:
             The worker class must implement a `perform(self, job: Job) -> Result[Any]` method.
             If not implemented, a NotImplementedError will be raised when called.
+
+            Optionally implement a `backoff(self, job: Job) -> int` method to customize
+            retry delays. If not provided, uses Oban's default jittery clamped backoff.
         """
         return worker(oban=self, **overrides)
 

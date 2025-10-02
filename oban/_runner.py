@@ -1,17 +1,25 @@
+from __future__ import annotations
+
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import Future, ThreadPoolExecutor
+from typing import TYPE_CHECKING, Any
 
 from . import _query
+from ._backoff import jittery_clamped
 from ._worker import resolve_worker
+from .job import Job
 from .types import Cancel, Snooze
+
+if TYPE_CHECKING:
+    from .oban import Oban
 
 
 class Runner:
     def __init__(
         self,
         *,
-        oban,
+        oban: Oban,
         queue: str = "default",
         limit: int = 10,
         poll_interval: float = 0.1,
@@ -58,13 +66,13 @@ class Runner:
             time.sleep(self._poll_interval)
 
     # TODO: Log something useful when this is instrumented
-    def _handle_execution_exception(self, future):
+    def _handle_execution_exception(self, future: Future[None]) -> None:
         error = future.exception()
 
         if error:
             print(f"[error] Unhandled exception in job execution: {error!r}")
 
-    def _execute(self, oban, job):
+    def _execute(self, oban: Oban, job: Job) -> None:
         worker = resolve_worker(job.worker)()
 
         try:
@@ -75,11 +83,18 @@ class Runner:
         with oban.get_connection() as conn:
             match result:
                 case Exception() as error:
-                    # TODO: Calculate backoff
-                    _query.error_job(conn, job, error, 1)
+                    backoff = self._backoff(worker, job)
+
+                    _query.error_job(conn, job, error, backoff)
                 case Snooze(seconds=seconds):
                     _query.snooze_job(conn, job, seconds)
                 case Cancel(reason=reason):
                     _query.cancel_job(conn, job, reason)
                 case _:
                     _query.complete_job(conn, job)
+
+    def _backoff(self, worker: Any, job: Job) -> int:
+        if hasattr(worker, "backoff"):
+            return worker.backoff(job)
+        else:
+            return jittery_clamped(job.attempt, job.max_attempts)
