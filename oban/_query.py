@@ -43,6 +43,13 @@ def error_job(conn, job: Job, error: Exception, seconds: int) -> None:
     conn.execute(stmt, args)
 
 
+def get_job(conn, job_id: int) -> Job:
+    with conn.cursor(row_factory=class_row(Job)) as cur:
+        cur.execute("SELECT * FROM oban_jobs WHERE id = %s", (job_id,))
+
+        return cur.fetchone()
+
+
 def fetch_jobs(conn, demand: int, queue: str) -> list[Job]:
     stmt = _load_file("fetch_jobs.sql")
     atby = ["not-a-real-node", "not-a-real-uuid"]

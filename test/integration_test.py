@@ -2,6 +2,7 @@ import pytest
 import time
 from datetime import datetime, timedelta, timezone
 
+from oban import _query
 from oban import Oban, Cancel, Snooze
 
 
@@ -23,28 +24,6 @@ def with_backoff(check_fn, timeout=1.0, interval=0.01):
 
 
 class TestObanIntegration:
-    @pytest.fixture(autouse=True)
-    def setup(self, db_url):
-        self.performed = set()
-        self.db_url = db_url
-        self.oban = None
-
-    def teardown_method(self):
-        if self.oban:
-            self.oban.stop()
-
-    def assert_performed(self, ref):
-        assert ref in self.performed
-
-    def assert_job_state(self, job_id: int, expected_state: str):
-        with self.oban.get_connection() as conn:
-            result = conn.execute(
-                "SELECT state FROM oban_jobs WHERE id = %s", (job_id,)
-            ).fetchone()
-            actual_state = result[0] if result else None
-
-        assert actual_state == expected_state
-
     def create_worker(self):
         """Create a worker class that tracks performed jobs."""
         performed = self.performed
@@ -65,6 +44,28 @@ class TestObanIntegration:
                         return None
 
         return Worker
+
+    @pytest.fixture(autouse=True)
+    def setup(self, db_url):
+        self.performed = set()
+        self.db_url = db_url
+        self.oban = None
+
+    def teardown_method(self):
+        if self.oban:
+            self.oban.stop()
+
+    def assert_performed(self, ref):
+        assert ref in self.performed
+
+    def get_job(self, job_id):
+        with self.oban.get_connection() as conn:
+            return _query.get_job(conn, job_id)
+
+    def assert_job_state(self, job_id, expected_state):
+        job = self.get_job(job_id)
+
+        assert job is not None and job.state == expected_state
 
     def test_inserting_and_executing_jobs(self):
         self.oban = Oban(
@@ -90,6 +91,27 @@ class TestObanIntegration:
         with_backoff(lambda: self.assert_job_state(job_3.id, "cancelled"))
         with_backoff(lambda: self.assert_job_state(job_4.id, "scheduled"))
         with_backoff(lambda: self.assert_job_state(job_5.id, "discarded"))
+
+    def test_errored_jobs_are_retryable_with_backoff(self):
+        self.oban = Oban(
+            pool={"url": self.db_url}, queues={"default": 2}, stage_interval=0.1
+        ).start()
+
+        Worker = self.create_worker()
+
+        job = Worker.enqueue({"act": "er", "ref": 1})
+        now = datetime.now(timezone.utc)
+
+        with_backoff(lambda: self.assert_job_state(job.id, "retryable"))
+
+        job = self.get_job(job.id)
+
+        assert job.scheduled_at > now
+
+        assert len(job.errors) > 0
+        assert job.errors[0]["at"] is not None
+        assert job.errors[0]["attempt"] == 1
+        assert job.errors[0]["error"] is not None
 
     def test_staging_scheduled_jobs(self):
         self.oban = Oban(

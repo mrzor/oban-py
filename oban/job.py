@@ -37,6 +37,13 @@ class Job:
     scheduled_at: datetime | None = None
 
     def __post_init__(self):
+        # Timestamps returned from the database are naive, which prevents comparison against
+        # timezone aware datetime instances.
+        for key in TIMESTAMP_FIELDS:
+            value = getattr(self, key)
+            if value is not None and value.tzinfo is None:
+                setattr(self, key, value.replace(tzinfo=timezone.utc))
+
         if self.state == "available" and self.scheduled_at is not None:
             self.state = "scheduled"
 
