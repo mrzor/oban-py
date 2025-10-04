@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import socket
+import threading
 
-from typing import Any, Callable, Type
+from typing import Any
 from uuid import uuid4
 from psycopg_pool import ConnectionPool
 
@@ -10,13 +11,16 @@ from . import _query
 from .job import Job
 from ._runner import Runner
 from ._stager import Stager
-from ._worker import worker
+
+_instances: dict[str, Oban] = {}
+_instances_lock = threading.Lock()
 
 
 class Oban:
     def __init__(
         self,
         *,
+        name: str = "oban",
         node: str | None = None,
         pool: dict[str, Any] | ConnectionPool = None,
         queues: dict[str, int] | None = None,
@@ -25,6 +29,7 @@ class Oban:
         """Initialize an Oban instance.
 
         Args:
+            name: Name for this instance in the registry (default: "oban")
             pool: Database connection pool or configuration dict with 'url' key
             queues: Queue names mapped to worker limits (default: {})
             stage_interval: How often to stage scheduled jobs in seconds (default: 1.0)
@@ -49,6 +54,7 @@ class Oban:
         else:
             self._pool = pool
 
+        self._name = name
         self._node = node or socket.gethostname()
 
         self._runners = {
@@ -60,58 +66,14 @@ class Oban:
             oban=self, runners=self._runners, stage_interval=stage_interval
         )
 
-    def worker(self, **overrides) -> Callable[[Type], Type]:
-        """Create a worker decorator for this Oban instance.
+        with _instances_lock:
+            _instances[name] = self
 
-        The decorator adds worker functionality to a class, including job creation
-        and enqueueing methods. The decorated class must implement a `perform` method.
+    def __enter__(self) -> Oban:
+        return self.start()
 
-        Args:
-            **overrides: Configuration options for the worker (queue, priority, etc.)
-
-        Returns:
-            A decorator function that can be applied to worker classes
-
-        Example:
-            >>> oban = Oban(queues={"default": 10, "mailers": 5})
-
-            >>> @oban.worker(queue="mailers", priority=1)
-            ... class EmailWorker:
-            ...     def perform(self, job):
-            ...         # Send email logic here
-            ...         print(f"Sending email: {job.args}")
-            ...         return None
-
-            >>> # Create a job without enqueueing
-            >>> job = EmailWorker.new({"to": "user@example.com", "subject": "Hello"})
-            >>> print(job.queue)  # "mailers"
-            >>> print(job.priority)  # 1
-
-            >>> # Create and enqueue a job
-            >>> job = EmailWorker.enqueue(
-            ...     {"to": "admin@example.com", "subject": "Alert"},
-            ...     priority=5  # Override default priority
-            ... )
-            >>> print(job.priority)  # 5
-
-            >>> # Custom backoff for retries
-            >>> @oban.worker(queue="default")
-            ... class CustomBackoffWorker:
-            ...     def perform(self, job):
-            ...         return None
-            ...
-            ...     def backoff(self, job):
-            ...         # Simple linear backoff at 2x the attempt number
-            ...         return 2 * job.attempt
-
-        Note:
-            The worker class must implement a `perform(self, job: Job) -> Result[Any]` method.
-            If not implemented, a NotImplementedError will be raised when called.
-
-            Optionally implement a `backoff(self, job: Job) -> int` method to customize
-            retry delays. If not provided, uses Oban's default jittery clamped backoff.
-        """
-        return worker(oban=self, **overrides)
+    def __exit__(self, _exc_type, _exc_val, _exc_tb) -> None:
+        self.stop()
 
     def start(self) -> Oban:
         self._pool.open()
@@ -125,8 +87,10 @@ class Oban:
 
     def stop(self) -> None:
         self._stager.stop()
+
         for runner in self._runners.values():
             runner.stop()
+
         self._pool.close()
 
     def enqueue(self, job: Job) -> Job:
@@ -147,3 +111,23 @@ class Oban:
         # argument to `enqueue`?
 
         return self._pool.connection()
+
+
+def get_instance(name: str = "oban") -> Oban:
+    """Get an Oban instance from the registry by name.
+
+    Args:
+        name: Name of the instance to retrieve (default: "oban")
+
+    Returns:
+        The Oban instance
+
+    Raises:
+        RuntimeError: If no instance with the given name exists
+    """
+    instance = _instances.get(name)
+
+    if instance is None:
+        raise RuntimeError(f"Oban instance '{name}' not found in registry")
+
+    return instance
