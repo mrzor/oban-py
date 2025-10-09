@@ -1,40 +1,53 @@
 import os
-import uuid
 import pytest
 import psycopg
 
 from oban import Oban
+from oban.schema import install
 
-DB_URL_BASE = os.getenv("PG_URL_BASE", "postgresql://postgres@localhost")
-TEMPLATE_DB = os.getenv("OBAN_TEMPLATE_DB", "oban_test_template")
+DB_URL_BASE = os.getenv("DB_URL_BASE", "postgresql://postgres@localhost")
 
 
-@pytest.fixture(scope="function")
-def db_url():
-    dbname = f"oban_test_{uuid.uuid4().hex[:8]}"
+@pytest.fixture(scope="session")
+def test_database(request):
+    worker_id = getattr(request.config, "workerinput", {}).get("workerid", "master")
+
+    if worker_id == "master":
+        worker_idx = 0
+    else:
+        worker_idx = int(worker_id.replace("gw", ""))
+
+    dbname = f"oban_py_test_{worker_idx}"
     db_url = f"{DB_URL_BASE}/{dbname}"
 
     with psycopg.connect(f"{DB_URL_BASE}/postgres", autocommit=True) as conn:
-        conn.execute(f'CREATE DATABASE "{dbname}" TEMPLATE "{TEMPLATE_DB}"')
+        exists = conn.execute(
+            "SELECT 1 FROM pg_database WHERE datname = %s", (dbname,)
+        ).fetchone()
 
-    try:
-        yield db_url
-    finally:
-        with psycopg.connect(f"{DB_URL_BASE}/postgres", autocommit=True) as conn:
-            conn.execute(f'DROP DATABASE "{dbname}" WITH (FORCE)')
+        if not exists:
+            conn.execute(f'CREATE DATABASE "{dbname}"')
+            install(db_url)
+
+    yield db_url
+
+
+@pytest.fixture
+def db_url(test_database):
+    yield test_database
+
+    with psycopg.connect(test_database) as conn:
+        conn.execute("TRUNCATE TABLE oban_jobs, oban_peers RESTART IDENTITY CASCADE")
+        conn.commit()
 
 
 @pytest.fixture
 def oban_instance(request, db_url):
-    """Returns a factory function to create Oban instances with custom config.
-
-    Can be configured via @pytest.mark.oban decorator on individual tests.
-    """
     mark = request.node.get_closest_marker("oban")
     mark_kwargs = mark.kwargs if mark else {}
 
     def _create_instance(**overrides):
-        params = {"pool": {"url": db_url}}
+        params = {"pool": {"url": db_url}, "stage_interval": 0.1}
         return Oban(**{**params, **mark_kwargs, **overrides})
 
     return _create_instance
