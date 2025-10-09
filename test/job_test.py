@@ -11,7 +11,7 @@ class TestJobValidation:
             Job.new(worker="test.Worker", queue="")
 
         with pytest.raises(ValueError, match="queue"):
-            Job.new(worker="test.Worker", queue="a" * 129)
+            Job.new(worker="test.Worker", queue="   ")
 
     def test_worker_validation(self):
         assert Job.new(worker="test.Worker")
@@ -20,7 +20,7 @@ class TestJobValidation:
             Job.new(worker="")
 
         with pytest.raises(ValueError, match="worker"):
-            Job.new(worker="a" * 129)
+            Job.new(worker="   ")
 
     def test_max_attempts_validation(self):
         assert Job.new(worker="test.Worker", max_attempts=1)

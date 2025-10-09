@@ -75,14 +75,11 @@ class Job:
         )
 
     def _validate(self) -> None:
-        if not self.worker:
-            raise ValueError("worker is required")
+        if not self.queue.strip():
+            raise ValueError("queue must not be blank")
 
-        if not (1 <= len(self.queue) <= 128):
-            raise ValueError("queue must be between 1 and 128 characters")
-
-        if not (1 <= len(self.worker) <= 128):
-            raise ValueError("worker must be between 1 and 128 characters")
+        if not self.worker.strip():
+            raise ValueError("worker must not be blank")
 
         if self.max_attempts <= 0:
             raise ValueError("max_attempts must be greater than 0")

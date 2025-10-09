@@ -2,7 +2,7 @@
 Decorators for creating Oban workers and jobs.
 
 This module provides two decorators for making your code enqueueable:
-- @worker: For classes with a perform method
+- @worker: For classes with a `process` method
 - @job: For wrapping functions as jobs
 """
 
@@ -19,7 +19,7 @@ def worker(*, oban: str = "oban", **overrides):
     """Decorate a class to make it a viable worker.
 
     The decorator adds worker functionality to a class, including job creation
-    and enqueueing methods. The decorated class must implement a `perform` method.
+    and enqueueing methods. The decorated class must implement a `process` method.
 
     For simpler function-based jobs, consider using @job instead.
 
@@ -38,8 +38,7 @@ def worker(*, oban: str = "oban", **overrides):
         >>>
         >>> @worker(queue="mailers", priority=1)
         ... class EmailWorker:
-        ...     def perform(self, job):
-        ...         # Send email logic here
+        ...     def process(self, job):
         ...         print(f"Sending email: {job.args}")
         ...         return None
         >>>
@@ -58,7 +57,7 @@ def worker(*, oban: str = "oban", **overrides):
         >>> # Custom backoff for retries
         >>> @worker(queue="default")
         ... class CustomBackoffWorker:
-        ...     def perform(self, job):
+        ...     def process(self, job):
         ...         return None
         ...
         ...     def backoff(self, job):
@@ -66,7 +65,7 @@ def worker(*, oban: str = "oban", **overrides):
         ...         return 2 * job.attempt
 
     Note:
-        The worker class must implement a `perform(self, job: Job) -> Result[Any]` method.
+        The worker class must implement a `process(self, job: Job) -> Result[Any]` method.
         If not implemented, a NotImplementedError will be raised when called.
 
         Optionally implement a `backoff(self, job: Job) -> int` method to customize
@@ -74,12 +73,12 @@ def worker(*, oban: str = "oban", **overrides):
     """
 
     def decorate(cls: type) -> type:
-        if not hasattr(cls, "perform"):
+        if not hasattr(cls, "process"):
 
-            def perform(self, job: Job) -> Result[Any]:
-                raise NotImplementedError("Worker must implement perform method")
+            def process(self, job: Job) -> Result[Any]:
+                raise NotImplementedError("Worker must implement process method")
 
-            setattr(cls, "perform", perform)
+            setattr(cls, "process", process)
 
         @classmethod
         def new(cls, args: dict[str, Any], /, **overrides) -> Job:
@@ -136,7 +135,7 @@ def job(*, oban: str = "oban", **overrides):
         sig = inspect.signature(func)
 
         class FunctionWorker:
-            def perform(self, job: Job):
+            def process(self, job: Job):
                 return func(**job.args)
 
         FunctionWorker.__name__ = func.__name__

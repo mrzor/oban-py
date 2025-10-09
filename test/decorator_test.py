@@ -7,7 +7,7 @@ class TestWorkerDecorator:
     def test_creates_worker_with_new_and_enqueue_methods(self):
         @worker()
         class TestWorker:
-            def perform(self, job):
+            def process(self, job):
                 return job.args
 
         assert hasattr(TestWorker, "new")
@@ -16,7 +16,7 @@ class TestWorkerDecorator:
     def test_new_creates_job_with_worker_path(self):
         @worker(queue="test", priority=5)
         class TestWorker:
-            def perform(self, job):
+            def process(self, job):
                 return job.args
 
         job = TestWorker.new({"foo": "bar"})
@@ -29,7 +29,7 @@ class TestWorkerDecorator:
     def test_overrides_apply_to_individual_jobs(self):
         @worker(queue="default", priority=1)
         class TestWorker:
-            def perform(self, job):
+            def process(self, job):
                 return job.args
 
         job = TestWorker.new({"foo": "bar"}, priority=9, queue="urgent")

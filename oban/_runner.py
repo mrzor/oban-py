@@ -95,7 +95,7 @@ class Runner:
         worker = resolve_worker(job.worker)()
 
         try:
-            result = worker.perform(job)
+            result = worker.process(job)
         except Exception as error:
             result = error
 

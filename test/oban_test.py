@@ -7,10 +7,10 @@ from oban import Oban, Cancel, Snooze, worker, _query
 
 @worker()
 class Worker:
-    performed = set()
+    processed = set()
 
-    def perform(self, job):
-        Worker.performed.add(job.args["ref"])
+    def process(self, job):
+        Worker.processed.add(job.args["ref"])
 
         match job.args:
             case {"act": "er"}:
@@ -77,10 +77,10 @@ class TestEnqueueMany:
 
 class TestIntegration:
     def teardown_method(self):
-        Worker.performed.clear()
+        Worker.processed.clear()
 
-    def assert_performed(self, ref):
-        assert ref in Worker.performed
+    def assert_processed(self, ref):
+        assert ref in Worker.processed
 
     def get_job(self, oban, job_id):
         with oban.get_connection() as conn:
@@ -100,11 +100,11 @@ class TestIntegration:
             job_4 = Worker.enqueue({"act": "sn", "ref": 4})
             job_5 = Worker.enqueue({"act": "er", "ref": 5}, max_attempts=1)
 
-            with_backoff(lambda: self.assert_performed(1))
-            with_backoff(lambda: self.assert_performed(2))
-            with_backoff(lambda: self.assert_performed(3))
-            with_backoff(lambda: self.assert_performed(4))
-            with_backoff(lambda: self.assert_performed(5))
+            with_backoff(lambda: self.assert_processed(1))
+            with_backoff(lambda: self.assert_processed(2))
+            with_backoff(lambda: self.assert_processed(3))
+            with_backoff(lambda: self.assert_processed(4))
+            with_backoff(lambda: self.assert_processed(5))
 
             with_backoff(lambda: self.assert_job_state(oban, job_1.id, "completed"))
             with_backoff(lambda: self.assert_job_state(oban, job_2.id, "retryable"))
@@ -123,7 +123,7 @@ class TestIntegration:
             job_1 = Worker.enqueue({"ref": 1}, scheduled_at=past_time)
             job_2 = Worker.enqueue({"ref": 2}, scheduled_at=next_time)
 
-            with_backoff(lambda: self.assert_performed(1))
+            with_backoff(lambda: self.assert_processed(1))
             with_backoff(lambda: self.assert_job_state(oban, job_1.id, "completed"))
 
             self.assert_job_state(oban, job_2.id, "scheduled")
