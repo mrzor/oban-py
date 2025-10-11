@@ -119,3 +119,11 @@ async def uninstall(conn) -> None:
     stmt = load_file("uninstall.sql")
 
     await conn.execute(stmt)
+
+
+async def verify_structure(conn) -> list[str]:
+    stmt = load_file("verify_structure.sql")
+    rows = await conn.execute(stmt)
+    results = await rows.fetchall()
+
+    return [table for (table,) in results]

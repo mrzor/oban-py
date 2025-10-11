@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     from .oban import Oban
 
 
-class Runner:
+class Producer:
     def __init__(
         self,
         *,
@@ -33,7 +33,7 @@ class Runner:
 
     async def start(self) -> None:
         self._loop_task = asyncio.create_task(
-            self._loop(), name=f"oban-runner-{self._queue}"
+            self._loop(), name=f"oban-producer-{self._queue}"
         )
 
     async def stop(self) -> None:

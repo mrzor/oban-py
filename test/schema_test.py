@@ -43,7 +43,7 @@ class TestInstallSql:
 
         assert "CREATE TYPE oban_job_state" in sql
         assert "CREATE TABLE oban_jobs" in sql
-        assert "CREATE TABLE oban_peers" in sql
+        assert "CREATE TABLE oban_leaders" in sql
         assert "CREATE INDEX" in sql
 
 
@@ -53,7 +53,7 @@ class TestUninstallSql:
 
         assert "DROP TABLE" in sql
         assert "oban_jobs" in sql
-        assert "oban_peers" in sql
+        assert "oban_leaders" in sql
         assert "DROP TYPE" in sql
         assert "oban_job_state" in sql
 
@@ -66,7 +66,7 @@ class TestInstall:
         tables = await list_tables(isolated_db)
 
         assert "oban_jobs" in tables
-        assert "oban_peers" in tables
+        assert "oban_leaders" in tables
 
 
 class TestUninstall:
@@ -78,4 +78,4 @@ class TestUninstall:
         tables = await list_tables(isolated_db)
 
         assert "oban_jobs" not in tables
-        assert "oban_peers" not in tables
+        assert "oban_leaders" not in tables

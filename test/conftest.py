@@ -48,7 +48,7 @@ async def db_url(test_database):
     yield test_database
 
     with psycopg.connect(test_database) as conn:
-        conn.execute("TRUNCATE TABLE oban_jobs, oban_peers RESTART IDENTITY CASCADE")
+        conn.execute("TRUNCATE TABLE oban_jobs, oban_leaders RESTART IDENTITY CASCADE")
         conn.commit()
 
 

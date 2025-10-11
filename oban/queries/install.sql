@@ -39,7 +39,7 @@ CREATE TABLE oban_jobs (
     CONSTRAINT non_negative_priority CHECK (priority >= 0)
 );
 
-CREATE TABLE oban_peers (
+CREATE TABLE oban_leaders (
     name TEXT PRIMARY KEY,
     node TEXT NOT NULL,
     started_at TIMESTAMP WITHOUT TIME ZONE NOT NULL,

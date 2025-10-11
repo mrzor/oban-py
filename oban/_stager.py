@@ -7,7 +7,7 @@ from . import _query
 
 if TYPE_CHECKING:
     from .oban import Oban
-    from ._runner import Runner
+    from ._producer import Producer
 
 
 class Stager:
@@ -15,12 +15,12 @@ class Stager:
         self,
         *,
         oban: Oban,
-        runners: dict[str, Runner],
+        producers: dict[str, Producer],
         stage_interval: float = 1.0,
         stage_limit: int = 20_000,
     ) -> None:
         self._oban = oban
-        self._runners = runners
+        self._producers = producers
         self._stage_interval = stage_interval
         self._stage_limit = stage_limit
 
@@ -55,5 +55,5 @@ class Stager:
             available = await _query.check_available_queues(conn)
 
         for queue in available:
-            if queue in self._runners:
-                await self._runners[queue].notify()
+            if queue in self._producers:
+                await self._producers[queue].notify()

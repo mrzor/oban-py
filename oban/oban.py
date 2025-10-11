@@ -9,7 +9,7 @@ from uuid import uuid4
 from . import _query
 from ._driver import wrap_conn
 from .job import Job
-from ._runner import Runner
+from ._producer import Producer
 from ._stager import Stager
 
 _instances: dict[str, Oban] = {}
@@ -48,13 +48,13 @@ class Oban:
         self._name = name
         self._node = node or socket.gethostname()
 
-        self._runners = {
-            queue: Runner(oban=self, queue=queue, limit=limit, uuid=str(uuid4()))
+        self._producers = {
+            queue: Producer(oban=self, queue=queue, limit=limit, uuid=str(uuid4()))
             for queue, limit in queues.items()
         }
 
         self._stager = Stager(
-            oban=self, runners=self._runners, stage_interval=stage_interval
+            oban=self, producers=self._producers, stage_interval=stage_interval
         )
 
         # TODO: handle async lock or bypass
@@ -66,9 +66,22 @@ class Oban:
     async def __aexit__(self, _exc_type, _exc_val, _exc_tb) -> None:
         await self.stop()
 
+    async def _verify_structure(self) -> None:
+        async with self.get_connection() as conn:
+            existing = await _query.verify_structure(conn)
+
+        for table in ["oban_jobs", "oban_leaders"]:
+            if table not in existing:
+                raise RuntimeError(
+                    f"The '{table}' is missing, run schema installation first."
+                )
+
     async def start(self) -> Oban:
-        for queue, runner in self._runners.items():
-            await runner.start()
+        if self._producers:
+            await self._verify_structure()
+
+        for queue, producer in self._producers.items():
+            await producer.start()
 
         await self._stager.start()
 
@@ -77,8 +90,8 @@ class Oban:
     async def stop(self) -> None:
         await self._stager.stop()
 
-        for runner in self._runners.values():
-            await runner.stop()
+        for producer in self._producers.values():
+            await producer.stop()
 
     async def enqueue(self, job: Job) -> Job:
         """Insert a job into the database for processing.
