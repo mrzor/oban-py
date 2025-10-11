@@ -3,7 +3,7 @@ import pytest
 import time
 from datetime import datetime, timedelta, timezone
 
-from oban import Cancel, Snooze, worker, _query
+from oban import Cancel, Snooze, worker
 
 
 @worker()
@@ -89,8 +89,7 @@ class TestIntegration:
         assert ref in Worker.processed
 
     async def get_job(self, oban, job_id):
-        async with oban.get_connection() as conn:
-            return await _query.get_job(conn, job_id)
+        return await oban._query.get_job(job_id)
 
     async def assert_state(self, oban, job_id, expected_state):
         job = await self.get_job(oban, job_id)

@@ -3,23 +3,21 @@ from __future__ import annotations
 import asyncio
 from typing import TYPE_CHECKING
 
-from . import _query
-
 if TYPE_CHECKING:
-    from .oban import Oban
     from ._producer import Producer
+    from ._query import Query
 
 
 class Stager:
     def __init__(
         self,
         *,
-        oban: Oban,
+        query: Query,
         producers: dict[str, Producer],
         stage_interval: float = 1.0,
         stage_limit: int = 20_000,
     ) -> None:
-        self._oban = oban
+        self._query = query
         self._producers = producers
         self._stage_interval = stage_interval
         self._stage_limit = stage_limit
@@ -49,10 +47,9 @@ class Stager:
             await asyncio.sleep(self._stage_interval)
 
     async def _stage(self) -> None:
-        async with self._oban.get_connection() as conn:
-            await _query.stage_jobs(conn, self._stage_limit)
+        await self._query.stage_jobs(self._stage_limit)
 
-            available = await _query.check_available_queues(conn)
+        available = await self._query.check_available_queues()
 
         for queue in available:
             if queue in self._producers:

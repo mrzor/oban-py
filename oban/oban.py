@@ -1,19 +1,16 @@
 from __future__ import annotations
 
-import asyncio
 import socket
 
 from typing import Any
 from uuid import uuid4
 
-from . import _query
-from ._driver import wrap_conn
+from ._query import Query
 from .job import Job
 from ._producer import Producer
 from ._stager import Stager
 
 _instances: dict[str, Oban] = {}
-_instances_lock = asyncio.Lock()
 
 
 class Oban:
@@ -23,6 +20,7 @@ class Oban:
         conn: Any,
         name: str = "oban",
         node: str | None = None,
+        prefix: str = "public",
         queues: dict[str, int] | None = None,
         stage_interval: float = 1.0,
     ) -> None:
@@ -32,6 +30,7 @@ class Oban:
             conn: Database connection or pool (e.g., AsyncConnection or AsyncConnectionPool)
             name: Name for this instance in the registry (default: "oban")
             node: Node identifier for this instance (default: socket.gethostname())
+            prefix: PostgreSQL schema where Oban tables are located (default: "public")
             queues: Queue names mapped to worker limits (default: {})
             stage_interval: How often to stage scheduled jobs, in seconds (default: 1.0)
         """
@@ -44,20 +43,27 @@ class Oban:
         if stage_interval <= 0:
             raise ValueError("stage_interval must be positive")
 
-        self._driver = wrap_conn(conn)
         self._name = name
         self._node = node or socket.gethostname()
+        self._query = Query(conn, prefix)
 
         self._producers = {
-            queue: Producer(oban=self, queue=queue, limit=limit, uuid=str(uuid4()))
+            queue: Producer(
+                query=self._query,
+                node=self._node,
+                queue=queue,
+                limit=limit,
+                uuid=str(uuid4()),
+            )
             for queue, limit in queues.items()
         }
 
         self._stager = Stager(
-            oban=self, producers=self._producers, stage_interval=stage_interval
+            query=self._query,
+            producers=self._producers,
+            stage_interval=stage_interval,
         )
 
-        # TODO: handle async lock or bypass
         _instances[name] = self
 
     async def __aenter__(self) -> Oban:
@@ -67,8 +73,7 @@ class Oban:
         await self.stop()
 
     async def _verify_structure(self) -> None:
-        async with self.get_connection() as conn:
-            existing = await _query.verify_structure(conn)
+        existing = await self._query.verify_structure()
 
         for table in ["oban_jobs", "oban_leaders"]:
             if table not in existing:
@@ -113,10 +118,9 @@ class Oban:
 
             >>> await EmailWorker.enqueue({"to": "user@example.com", "subject": "Welcome"})
         """
-        async with self.get_connection() as conn:
-            result = await _query.insert_jobs(conn, [job])
+        result = await self._query.insert_jobs([job])
 
-            return result[0]
+        return result[0]
 
     async def enqueue_many(self, *jobs: Job) -> list[Job]:
         """Insert multiple jobs into the database in a single operation.
@@ -139,19 +143,7 @@ class Oban:
             >>>
             >>> await oban.enqueue_many(job1, job2, job3)
         """
-        async with self.get_connection() as conn:
-            return await _query.insert_jobs(conn, list(jobs))
-
-    def get_connection(self) -> Any:
-        """Get a connection from the driver.
-
-        Returns an async context manager that yields a connection.
-
-        Usage:
-          async with oban.get_connection() as conn:
-              # use conn
-        """
-        return self._driver.connection()
+        return await self._query.insert_jobs(list(jobs))
 
 
 def get_instance(name: str = "oban") -> Oban:

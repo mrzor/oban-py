@@ -1,9 +1,15 @@
+from __future__ import annotations
+
+import re
 from collections import defaultdict
 from dataclasses import replace
 from functools import cache
 from importlib.resources import files
+from typing import Any
+
 from psycopg.rows import class_row
 
+from ._driver import wrap_conn
 from .job import Job
 
 
@@ -22,108 +28,131 @@ INSERTABLE_FIELDS = [
 
 
 @cache
-def load_file(path: str) -> str:
-    return files("oban.queries").joinpath(path).read_text(encoding="utf-8")
+def load_file(path: str, prefix: str = "public", apply_prefix: bool = True) -> str:
+    sql = files("oban.queries").joinpath(path).read_text(encoding="utf-8")
+
+    if apply_prefix:
+        return re.sub(
+            r"\b(oban_jobs|oban_leaders|oban_job_state)\b", rf"{prefix}.\1", sql
+        )
+    else:
+        return sql
 
 
-async def cancel_job(conn, job: Job, reason: str) -> None:
-    stmt = load_file("cancel_job.sql")
-    args = {"attempt": job.attempt, "id": job.id, "reason": reason}
+class Query:
+    def __init__(self, conn: Any, prefix: str = "public") -> None:
+        self._driver = wrap_conn(conn)
+        self._prefix = prefix
 
-    await conn.execute(stmt, args)
+    async def cancel_job(self, job: Job, reason: str) -> None:
+        async with self._driver.connection() as conn:
+            stmt = load_file("cancel_job.sql", self._prefix)
+            args = {"attempt": job.attempt, "id": job.id, "reason": reason}
 
+            await conn.execute(stmt, args)
 
-async def check_available_queues(conn) -> list[str]:
-    stmt = load_file("check_available_queues.sql")
-    rows = await conn.execute(stmt, {})
-    results = await rows.fetchall()
+    async def check_available_queues(self) -> list[str]:
+        async with self._driver.connection() as conn:
+            stmt = load_file("check_available_queues.sql", self._prefix)
+            rows = await conn.execute(stmt, {})
+            results = await rows.fetchall()
 
-    return [queue for (queue,) in results]
+            return [queue for (queue,) in results]
 
+    async def complete_job(self, job: Job) -> None:
+        async with self._driver.connection() as conn:
+            stmt = load_file("complete_job.sql", self._prefix)
 
-async def complete_job(conn, job: Job) -> None:
-    stmt = load_file("complete_job.sql")
+            await conn.execute(stmt, {"id": job.id})
 
-    await conn.execute(stmt, {"id": job.id})
+    async def error_job(self, job: Job, error: Exception, seconds: int) -> None:
+        async with self._driver.connection() as conn:
+            stmt = load_file("error_job.sql", self._prefix)
+            args = {
+                "attempt": job.attempt,
+                "id": job.id,
+                "error": repr(error),
+                "seconds": seconds,
+            }
 
+            await conn.execute(stmt, args)
 
-async def error_job(conn, job: Job, error: Exception, seconds: int) -> None:
-    stmt = load_file("error_job.sql")
-    args = {
-        "attempt": job.attempt,
-        "id": job.id,
-        "error": repr(error),
-        "seconds": seconds,
-    }
+    async def get_job(self, job_id: int) -> Job:
+        async with self._driver.connection() as conn:
+            stmt = load_file("get_job.sql", self._prefix)
 
-    await conn.execute(stmt, args)
+            async with conn.cursor(row_factory=class_row(Job)) as cur:
+                await cur.execute(stmt, (job_id,))
 
+                return await cur.fetchone()
 
-async def get_job(conn, job_id: int) -> Job:
-    async with conn.cursor(row_factory=class_row(Job)) as cur:
-        await cur.execute("SELECT * FROM oban_jobs WHERE id = %s", (job_id,))
+    async def fetch_jobs(
+        self, demand: int, queue: str, node: str, uuid: str
+    ) -> list[Job]:
+        async with self._driver.connection() as conn:
+            stmt = load_file("fetch_jobs.sql", self._prefix)
+            args = {"queue": queue, "demand": demand, "attempted_by": [node, uuid]}
 
-        return await cur.fetchone()
+            async with conn.cursor(row_factory=class_row(Job)) as cur:
+                await cur.execute(stmt, args)
 
+                return await cur.fetchall()
 
-async def fetch_jobs(conn, demand: int, queue: str, node: str, uuid: str) -> list[Job]:
-    stmt = load_file("fetch_jobs.sql")
-    args = {"queue": queue, "demand": demand, "attempted_by": [node, uuid]}
+    async def insert_jobs(self, jobs: list[Job]) -> list[Job]:
+        async with self._driver.connection() as conn:
+            stmt = load_file("insert_many.sql", self._prefix)
+            args = defaultdict(list)
 
-    async with conn.cursor(row_factory=class_row(Job)) as cur:
-        await cur.execute(stmt, args)
+            for job in jobs:
+                data = job.to_dict()
+                for key in INSERTABLE_FIELDS:
+                    args[key].append(data[key])
 
-        return await cur.fetchall()
+            result = await conn.execute(stmt, dict(args))
+            rows = await result.fetchall()
 
+            return [
+                replace(
+                    job,
+                    id=row[0],
+                    inserted_at=row[1],
+                    scheduled_at=row[2],
+                    state=row[3],
+                )
+                for job, row in zip(jobs, rows)
+            ]
 
-async def insert_jobs(conn, jobs: list[Job]) -> list[Job]:
-    stmt = load_file("insert_many.sql")
-    args = defaultdict(list)
+    async def install(self) -> None:
+        async with self._driver.connection() as conn:
+            stmt = load_file("install.sql", self._prefix)
 
-    for job in jobs:
-        data = job.to_dict()
+            await conn.execute(stmt)
 
-        for key in INSERTABLE_FIELDS:
-            args[key].append(data[key])
+    async def snooze_job(self, job: Job, seconds: int) -> None:
+        async with self._driver.connection() as conn:
+            stmt = load_file("snooze_job.sql", self._prefix)
+            args = {"id": job.id, "seconds": seconds}
 
-    result = await conn.execute(stmt, dict(args))
-    rows = await result.fetchall()
+            await conn.execute(stmt, args)
 
-    return [
-        replace(job, id=row[0], inserted_at=row[1], scheduled_at=row[2], state=row[3])
-        for job, row in zip(jobs, rows)
-    ]
+    async def stage_jobs(self, limit: int) -> None:
+        async with self._driver.connection() as conn:
+            stmt = load_file("stage_jobs.sql", self._prefix)
+            args = {"limit": limit}
 
+            await conn.execute(stmt, args)
 
-async def install(conn) -> None:
-    stmt = load_file("install.sql")
+    async def uninstall(self) -> None:
+        async with self._driver.connection() as conn:
+            stmt = load_file("uninstall.sql", self._prefix)
 
-    await conn.execute(stmt)
+            await conn.execute(stmt)
 
+    async def verify_structure(self) -> list[str]:
+        async with self._driver.connection() as conn:
+            stmt = load_file("verify_structure.sql", apply_prefix=False)
+            args = {"prefix": self._prefix}
+            rows = await conn.execute(stmt, args)
+            results = await rows.fetchall()
 
-async def snooze_job(conn, job: Job, seconds: int) -> None:
-    stmt = load_file("snooze_job.sql")
-    args = {"id": job.id, "seconds": seconds}
-
-    await conn.execute(stmt, args)
-
-
-async def stage_jobs(conn, limit: int) -> None:
-    stmt = load_file("stage_jobs.sql")
-    args = {"limit": limit}
-
-    await conn.execute(stmt, args)
-
-
-async def uninstall(conn) -> None:
-    stmt = load_file("uninstall.sql")
-
-    await conn.execute(stmt)
-
-
-async def verify_structure(conn) -> list[str]:
-    stmt = load_file("verify_structure.sql")
-    rows = await conn.execute(stmt)
-    results = await rows.fetchall()
-
-    return [table for (table,) in results]
+            return [table for (table,) in results]

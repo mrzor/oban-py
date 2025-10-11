@@ -3,26 +3,27 @@ from __future__ import annotations
 import asyncio
 from typing import TYPE_CHECKING, Any
 
-from . import _query
 from ._backoff import jittery_clamped
 from ._worker import resolve_worker
 from .job import Job
 from .types import Cancel, Snooze
 
 if TYPE_CHECKING:
-    from .oban import Oban
+    from ._query import Query
 
 
 class Producer:
     def __init__(
         self,
         *,
-        oban: Oban,
+        query: Query,
+        node: str,
         queue: str = "default",
         limit: int = 10,
         uuid: str,
     ) -> None:
-        self._oban = oban
+        self._query = query
+        self._node = node
         self._queue = queue
         self._limit = limit
         self._uuid = uuid
@@ -73,7 +74,7 @@ class Producer:
                 jobs = await self._fetch_jobs(demand)
 
                 for job in jobs:
-                    task = asyncio.create_task(self._execute(self._oban, job))
+                    task = asyncio.create_task(self._execute(job))
                     task.add_done_callback(self._running_jobs.discard)
 
                     self._running_jobs.add(task)
@@ -84,16 +85,14 @@ class Producer:
                 pass
 
     async def _fetch_jobs(self, demand: int):
-        async with self._oban.get_connection() as conn:
-            return await _query.fetch_jobs(
-                conn,
-                queue=self._queue,
-                demand=demand,
-                node=self._oban._node,
-                uuid=self._uuid,
-            )
+        return await self._query.fetch_jobs(
+            demand=demand,
+            queue=self._queue,
+            node=self._node,
+            uuid=self._uuid,
+        )
 
-    async def _execute(self, oban: Oban, job: Job) -> None:
+    async def _execute(self, job: Job) -> None:
         worker = resolve_worker(job.worker)()
 
         try:
@@ -101,18 +100,16 @@ class Producer:
         except Exception as error:
             result = error
 
-        async with oban.get_connection() as conn:
-            match result:
-                case Exception() as error:
-                    backoff = self._backoff(worker, job)
-
-                    await _query.error_job(conn, job, error, backoff)
-                case Snooze(seconds=seconds):
-                    await _query.snooze_job(conn, job, seconds)
-                case Cancel(reason=reason):
-                    await _query.cancel_job(conn, job, reason)
-                case _:
-                    await _query.complete_job(conn, job)
+        match result:
+            case Exception() as error:
+                backoff = self._backoff(worker, job)
+                await self._query.error_job(job, error, backoff)
+            case Snooze(seconds=seconds):
+                await self._query.snooze_job(job, seconds)
+            case Cancel(reason=reason):
+                await self._query.cancel_job(job, reason)
+            case _:
+                await self._query.complete_job(job)
 
     def _backoff(self, worker: Any, job: Job) -> int:
         if hasattr(worker, "backoff"):

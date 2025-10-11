@@ -2,15 +2,17 @@
 
 from typing import Any
 
-from . import _query
-from ._driver import wrap_conn
+from ._query import Query, load_file
 
 
-def install_sql() -> str:
+def install_sql(prefix: str = "public") -> str:
     """Get the SQL for installing Oban.
 
     Returns the raw SQL statements for creating Oban types, tables, and indexes.
     This is intended for integration with migration frameworks like Django or Alembic.
+
+    Args:
+        prefix: PostgreSQL schema where Oban tables will be located (default: "public")
 
     Returns:
         SQL string for schema installation
@@ -31,14 +33,17 @@ def install_sql() -> str:
         ...         migrations.RunSQL(install_sql()),
         ...     ]
     """
-    return _query.load_file("install.sql")
+    return load_file("install.sql", prefix)
 
 
-def uninstall_sql() -> str:
+def uninstall_sql(prefix: str = "public") -> str:
     """Get the SQL for uninstalling Oban.
 
     Returns the raw SQL statements for dropping Oban tables and types.
     Useful for integration with migration frameworks like Alembic or Django.
+
+    Args:
+        prefix: PostgreSQL schema where Oban tables are located (default: "public")
 
     Returns:
         SQL string for schema uninstallation
@@ -59,10 +64,10 @@ def uninstall_sql() -> str:
         ...         migrations.RunSQL(uninstall_sql()),
         ...     ]
     """
-    return _query.load_file("uninstall.sql")
+    return load_file("uninstall.sql", prefix)
 
 
-async def install(conn_or_pool: Any) -> None:
+async def install(conn_or_pool: Any, prefix: str = "public") -> None:
     """Install Oban in the specified database.
 
     Creates all necessary types, tables, and indexes for Oban to function. The
@@ -71,6 +76,7 @@ async def install(conn_or_pool: Any) -> None:
 
     Args:
         conn_or_pool: A database connection or pool
+        prefix: PostgreSQL schema where Oban tables will be located (default: "public")
 
     Example:
         >>> from psycopg import AsyncConnection
@@ -79,14 +85,11 @@ async def install(conn_or_pool: Any) -> None:
         >>> async with await AsyncConnection.connect(DATABASE_URL) as conn:
         ...     await install(conn)
     """
-    driver = wrap_conn(conn_or_pool)
-
-    async with driver.connection() as conn:
-        async with conn.transaction():
-            await _query.install(conn)
+    query = Query(conn_or_pool, prefix)
+    await query.install()
 
 
-async def uninstall(conn_or_pool: Any) -> None:
+async def uninstall(conn_or_pool: Any, prefix: str = "public") -> None:
     """Uninstall Oban from the specified database.
 
     Drops all Oban tables and types. The uninstallation is wrapped in a DDL
@@ -94,6 +97,7 @@ async def uninstall(conn_or_pool: Any) -> None:
 
     Args:
         conn_or_pool: A database connection or pool
+        prefix: PostgreSQL schema where Oban tables are located (default: "public")
 
     Example:
         >>> from psycopg import AsyncConnection
@@ -102,8 +106,5 @@ async def uninstall(conn_or_pool: Any) -> None:
         >>> async with await AsyncConnection.connect(DATABASE_URL) as conn:
         ...     await uninstall(conn)
     """
-    driver = wrap_conn(conn_or_pool)
-
-    async with driver.connection() as conn:
-        async with conn.transaction():
-            await _query.uninstall(conn)
+    query = Query(conn_or_pool, prefix)
+    await query.uninstall()
