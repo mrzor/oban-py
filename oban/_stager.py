@@ -23,16 +23,17 @@ class Stager:
         self._runners = runners
         self._stage_interval = stage_interval
         self._stage_limit = stage_limit
-        self._task: asyncio.Task | None = None
+
+        self._loop_task = None
 
     async def start(self) -> None:
-        self._task = asyncio.create_task(self._loop(), name="oban-stager")
+        self._loop_task = asyncio.create_task(self._loop(), name="oban-stager")
 
     async def stop(self) -> None:
-        if self._task:
-            self._task.cancel()
+        if self._loop_task:
+            self._loop_task.cancel()
             try:
-                await self._task
+                await self._loop_task
             except asyncio.CancelledError:
                 pass
 

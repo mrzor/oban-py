@@ -1,4 +1,5 @@
--- Create custom types
+-- Types
+
 CREATE TYPE oban_job_state AS ENUM (
     'available',
     'scheduled',
@@ -10,7 +11,8 @@ CREATE TYPE oban_job_state AS ENUM (
     'cancelled'
 );
 
--- Create main jobs table
+-- Tables
+
 CREATE TABLE oban_jobs (
     id BIGINT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
     state oban_job_state NOT NULL DEFAULT 'available',
@@ -37,7 +39,15 @@ CREATE TABLE oban_jobs (
     CONSTRAINT non_negative_priority CHECK (priority >= 0)
 );
 
--- Create indexes
+CREATE TABLE oban_peers (
+    name TEXT PRIMARY KEY,
+    node TEXT NOT NULL,
+    started_at TIMESTAMP WITHOUT TIME ZONE NOT NULL,
+    expires_at TIMESTAMP WITHOUT TIME ZONE NOT NULL
+);
+
+-- Indexes
+
 CREATE INDEX oban_jobs_meta_index ON oban_jobs USING gin (meta);
 
 CREATE INDEX oban_jobs_state_queue_priority_scheduled_at_id_index
@@ -46,11 +56,3 @@ ON oban_jobs (state, queue, priority, scheduled_at, id);
 CREATE INDEX oban_jobs_staging_index
 ON oban_jobs (scheduled_at, id)
 WHERE state IN ('scheduled', 'retryable');
-
--- Create peers table for distributed coordination
-CREATE TABLE oban_peers (
-    name TEXT PRIMARY KEY,
-    node TEXT NOT NULL,
-    started_at TIMESTAMP WITHOUT TIME ZONE NOT NULL,
-    expires_at TIMESTAMP WITHOUT TIME ZONE NOT NULL
-);

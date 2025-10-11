@@ -27,46 +27,42 @@ class Runner:
         self._limit = limit
         self._uuid = uuid
 
-        self._task: asyncio.Task | None = None
-        self._work_available = asyncio.Event()
-        self._running_jobs: set[asyncio.Task] = set()
+        self._jobs_available = asyncio.Event()
+        self._loop_task = None
+        self._running_jobs = set()
 
     async def start(self) -> None:
-        self._task = asyncio.create_task(
+        self._loop_task = asyncio.create_task(
             self._loop(), name=f"oban-runner-{self._queue}"
         )
 
     async def stop(self) -> None:
-        if self._task:
-            self._task.cancel()
+        if self._loop_task:
+            self._loop_task.cancel()
+
             try:
-                await self._task
+                await self._loop_task
             except asyncio.CancelledError:
                 pass
 
-        # TODO: Support a grace period before cancelling running jobs
-        for job_task in self._running_jobs:
-            job_task.cancel()
-
-        # Wait for all jobs to finish
         if self._running_jobs:
             await asyncio.gather(*self._running_jobs, return_exceptions=True)
 
     async def notify(self) -> None:
-        self._work_available.set()
+        self._jobs_available.set()
 
     async def _loop(self) -> None:
         while True:
             try:
                 # TODO: Shorten this timeout based on configuration, the timeout changes whether we
                 # cleanly break on a stop event
-                await asyncio.wait_for(self._work_available.wait(), timeout=1.0)
+                await asyncio.wait_for(self._jobs_available.wait(), timeout=1.0)
             except asyncio.TimeoutError:
                 continue
             except asyncio.CancelledError:
                 break
 
-            self._work_available.clear()
+            self._jobs_available.clear()
 
             try:
                 demand = self._limit - len(self._running_jobs)
@@ -101,7 +97,7 @@ class Runner:
         worker = resolve_worker(job.worker)()
 
         try:
-            result = worker.process(job)
+            result = await asyncio.to_thread(worker.process, job)
         except Exception as error:
             result = error
 

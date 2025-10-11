@@ -33,7 +33,7 @@ class Oban:
             name: Name for this instance in the registry (default: "oban")
             node: Node identifier for this instance (default: socket.gethostname())
             queues: Queue names mapped to worker limits (default: {})
-            stage_interval: How often to stage scheduled jobs in seconds (default: 1.0)
+            stage_interval: How often to stage scheduled jobs, in seconds (default: 1.0)
         """
         queues = queues or {}
 
@@ -105,14 +105,14 @@ class Oban:
 
             return result[0]
 
-    async def enqueue_many(self, jobs: list[Job]) -> list[Job]:
+    async def enqueue_many(self, *jobs: Job) -> list[Job]:
         """Insert multiple jobs into the database in a single operation.
 
         This is more efficient than calling enqueue() multiple times as it uses a
         single database query to insert all jobs.
 
         Args:
-            jobs: A list of Job instances created via Worker.new()
+            *jobs: Job instances created via Worker.new()
 
         Returns:
             The inserted jobs with database-assigned values (id, timestamps, state)
@@ -120,16 +120,14 @@ class Oban:
         Example:
             >>> from myapp.oban import oban, EmailWorker
             >>>
-            >>> jobs = [
-            ...     EmailWorker.new({"to": "user1@example.com"}),
-            ...     EmailWorker.new({"to": "user2@example.com"}),
-            ...     EmailWorker.new({"to": "user3@example.com"}),
-            ... ]
+            >>> job1 = EmailWorker.new({"to": "user1@example.com"})
+            >>> job2 = EmailWorker.new({"to": "user2@example.com"})
+            >>> job3 = EmailWorker.new({"to": "user3@example.com"})
             >>>
-            >>> await oban.enqueue_many(jobs)
+            >>> await oban.enqueue_many(job1, job2, job3)
         """
         async with self.get_connection() as conn:
-            return await _query.insert_jobs(conn, jobs)
+            return await _query.insert_jobs(conn, list(jobs))
 
     def get_connection(self) -> Any:
         """Get a connection from the driver.
