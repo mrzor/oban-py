@@ -16,16 +16,18 @@ class Producer:
     def __init__(
         self,
         *,
-        query: Query,
-        node: str,
-        queue: str = "default",
         limit: int = 10,
+        name: str,
+        node: str,
+        query: Query,
+        queue: str = "default",
         uuid: str,
     ) -> None:
-        self._query = query
-        self._node = node
-        self._queue = queue
         self._limit = limit
+        self._name = name
+        self._node = node
+        self._query = query
+        self._queue = queue
         self._uuid = uuid
 
         self._jobs_available = asyncio.Event()
@@ -33,21 +35,24 @@ class Producer:
         self._running_jobs = set()
 
     async def start(self) -> None:
+        await self._query.insert_producer(
+            uuid=self._uuid,
+            name=self._name,
+            node=self._node,
+            queue=self._queue,
+            meta={"local_limit": self._limit},
+        )
+
         self._loop_task = asyncio.create_task(
-            self._loop(), name=f"oban-producer-{self._queue}"
+            self._loop(), name=f"oban-producer-loop-{self._queue}"
         )
 
     async def stop(self) -> None:
-        if self._loop_task:
-            self._loop_task.cancel()
+        self._loop_task.cancel()
 
-            try:
-                await self._loop_task
-            except asyncio.CancelledError:
-                pass
+        await asyncio.gather(self._loop_task, *self._running_jobs, return_exceptions=True)
 
-        if self._running_jobs:
-            await asyncio.gather(*self._running_jobs, return_exceptions=True)
+        await self._query.delete_producer(self._uuid)
 
     async def notify(self) -> None:
         self._jobs_available.set()
@@ -55,8 +60,6 @@ class Producer:
     async def _loop(self) -> None:
         while True:
             try:
-                # TODO: Shorten this timeout based on configuration, the timeout changes whether we
-                # cleanly break on a stop event
                 await asyncio.wait_for(self._jobs_available.wait(), timeout=1.0)
             except asyncio.TimeoutError:
                 continue

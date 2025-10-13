@@ -47,6 +47,7 @@ class TestInstallSql:
         assert "CREATE TYPE isolated.oban_job_state" in sql
         assert "CREATE TABLE isolated.oban_jobs" in sql
         assert "CREATE UNLOGGED TABLE isolated.oban_leaders" in sql
+        assert "CREATE UNLOGGED TABLE isolated.oban_producers" in sql
         assert "CREATE INDEX" in sql
 
     def test_scoping_elements_to_the_prefix(self):
@@ -55,6 +56,7 @@ class TestInstallSql:
         assert "CREATE TYPE public.oban_job_state" in sql
         assert "CREATE TABLE public.oban_jobs" in sql
         assert "CREATE UNLOGGED TABLE public.oban_leaders" in sql
+        assert "CREATE UNLOGGED TABLE public.oban_producers" in sql
         assert "CREATE INDEX" in sql
 
 
@@ -65,6 +67,7 @@ class TestUninstallSql:
         assert "DROP TABLE" in sql
         assert "oban_jobs" in sql
         assert "oban_leaders" in sql
+        assert "oban_producers" in sql
         assert "DROP TYPE" in sql
         assert "oban_job_state" in sql
 
@@ -78,6 +81,7 @@ class TestInstall:
 
         assert "oban_jobs" in tables
         assert "oban_leaders" in tables
+        assert "oban_producers" in tables
 
     @pytest.mark.asyncio
     async def test_creates_schema_in_database_using_prefix(self, isolated_db):
@@ -89,6 +93,7 @@ class TestInstall:
 
         assert "oban_jobs" in tables
         assert "oban_leaders" in tables
+        assert "oban_producers" in tables
 
 
 class TestUninstall:
@@ -101,3 +106,4 @@ class TestUninstall:
 
         assert "oban_jobs" not in tables
         assert "oban_leaders" not in tables
+        assert "oban_producers" not in tables

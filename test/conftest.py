@@ -47,9 +47,10 @@ async def test_database(request):
 async def db_url(test_database):
     yield test_database
 
-    with psycopg.connect(test_database) as conn:
-        conn.execute("TRUNCATE TABLE oban_jobs, oban_leaders RESTART IDENTITY CASCADE")
-        conn.commit()
+    with psycopg.connect(test_database, autocommit=True) as conn:
+        conn.execute("""
+            TRUNCATE TABLE oban_jobs, oban_leaders, oban_producers RESTART IDENTITY CASCADE
+         """)
 
 
 @pytest_asyncio.fixture

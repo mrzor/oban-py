@@ -46,6 +46,16 @@ CREATE UNLOGGED TABLE oban_leaders (
     expires_at timestamp WITHOUT TIME ZONE NOT NULL
 );
 
+CREATE UNLOGGED TABLE oban_producers (
+    uuid uuid PRIMARY KEY,
+    name text NOT NULL DEFAULT 'oban',
+    node text NOT NULL,
+    queue text NOT NULL,
+    meta jsonb NOT NULL DEFAULT '{}',
+    started_at timestamp WITHOUT TIME ZONE NOT NULL DEFAULT timezone('UTC', now()),
+    updated_at timestamp WITHOUT TIME ZONE NOT NULL DEFAULT timezone('UTC', now())
+);
+
 -- Indexes
 
 CREATE INDEX oban_jobs_state_queue_priority_scheduled_at_id_index

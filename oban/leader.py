@@ -72,8 +72,7 @@ class Leader:
                 self._is_leader = await self._attempt_election()
             except asyncio.CancelledError:
                 break
-            except Exception as error:
-                print(error)
+            except Exception:
                 pass
             finally:
                 if not self._started.is_set():

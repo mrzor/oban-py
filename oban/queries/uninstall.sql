@@ -1,3 +1,4 @@
+DROP TABLE IF EXISTS oban_producers CASCADE;
 DROP TABLE IF EXISTS oban_leaders CASCADE;
 DROP TABLE IF EXISTS oban_jobs CASCADE;
 DROP TYPE IF EXISTS oban_job_state;

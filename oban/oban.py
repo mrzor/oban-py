@@ -11,6 +11,7 @@ from .leader import Leader
 from ._producer import Producer
 from ._pruner import Pruner
 from ._query import Query
+from ._refresher import Refresher
 from ._stager import Stager
 
 _instances: dict[str, Oban] = {}
@@ -27,6 +28,7 @@ class Oban:
         prefix: str = "public",
         pruner: dict[str, Any] = {},
         queues: dict[str, int] | None = None,
+        refresher: dict[str, Any] = {},
         stage_interval: float = 1.0,
     ) -> None:
         """Initialize an Oban instance.
@@ -67,6 +69,7 @@ class Oban:
         self._producers = {
             queue: Producer(
                 query=self._query,
+                name=self._name,
                 node=self._node,
                 queue=queue,
                 limit=limit,
@@ -85,7 +88,10 @@ class Oban:
             query=self._query, node=self._node, name=name, enabled=leadership
         )
 
-        self._pruner = Pruner(query=self._query, leader=self._leader, **pruner)
+        self._pruner = Pruner(leader=self._leader, query=self._query, **pruner)
+        self._refresher = Refresher(
+            leader=self._leader, producers=self._producers, query=self._query, **refresher
+        )
 
         _instances[name] = self
 
@@ -113,7 +119,12 @@ class Oban:
         if self._producers:
             await self._verify_structure()
 
-        tasks = [self._leader.start(), self._stager.start(), self._pruner.start()]
+        tasks = [
+            self._leader.start(),
+            self._stager.start(),
+            self._pruner.start(),
+            self._refresher.start(),
+        ]
 
         for producer in self._producers.values():
             tasks.append(producer.start())
@@ -123,7 +134,12 @@ class Oban:
         return self
 
     async def stop(self) -> None:
-        tasks = [self._leader.stop(), self._stager.stop(), self._pruner.stop()]
+        tasks = [
+            self._leader.stop(),
+            self._stager.stop(),
+            self._pruner.stop(),
+            self._refresher.stop(),
+        ]
 
         for producer in self._producers.values():
             tasks.append(producer.stop())
@@ -183,7 +199,7 @@ class Oban:
     async def _verify_structure(self) -> None:
         existing = await self._query.verify_structure()
 
-        for table in ["oban_jobs", "oban_leaders"]:
+        for table in ["oban_jobs", "oban_leaders", "oban_producers"]:
             if table not in existing:
                 raise RuntimeError(
                     f"The '{table}' is missing, run schema installation first."

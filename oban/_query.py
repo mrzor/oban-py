@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import re
 from collections import defaultdict
 from dataclasses import replace
@@ -33,7 +34,9 @@ def load_file(path: str, prefix: str = "public", apply_prefix: bool = True) -> s
 
     if apply_prefix:
         return re.sub(
-            r"\b(oban_jobs|oban_leaders|oban_job_state)\b", rf"{prefix}.\1", sql
+            r"\b(oban_jobs|oban_leaders|oban_producers|oban_job_state)\b",
+            rf"{prefix}.\1",
+            sql,
         )
     else:
         return sql
@@ -44,25 +47,7 @@ class Query:
         self._driver = wrap_conn(conn)
         self._prefix = prefix
 
-    async def attempt_leadership(
-        self, name: str, node: str, ttl: int, is_leader: bool
-    ) -> bool:
-        async with self._driver.connection() as conn:
-            async with conn.transaction():
-                cleanup_stmt = load_file("cleanup_expired_leaders.sql", self._prefix)
-
-                await conn.execute(cleanup_stmt)
-
-                if is_leader:
-                    elect_stmt = load_file("reelect_leader.sql", self._prefix)
-                else:
-                    elect_stmt = load_file("elect_leader.sql", self._prefix)
-
-                args = {"name": name, "node": node, "ttl": ttl}
-                rows = await conn.execute(elect_stmt, args)
-                result = await rows.fetchone()
-
-                return result is not None and result[0] == node
+    # Jobs
 
     async def cancel_job(self, job: Job, reason: str) -> None:
         async with self._driver.connection() as conn:
@@ -143,12 +128,6 @@ class Query:
                 for job, row in zip(jobs, rows)
             ]
 
-    async def install(self) -> None:
-        async with self._driver.connection() as conn:
-            stmt = load_file("install.sql", self._prefix)
-
-            await conn.execute(stmt)
-
     async def prune_jobs(self, max_age: int, limit: int) -> int:
         async with self._driver.connection() as conn:
             async with conn.transaction():
@@ -158,13 +137,6 @@ class Query:
                 result = await conn.execute(stmt, args)
 
                 return result.rowcount
-
-    async def resign_leader(self, name: str, node: str) -> None:
-        async with self._driver.connection() as conn:
-            stmt = load_file("resign_leader.sql", self._prefix)
-            args = {"name": name, "node": node}
-
-            await conn.execute(stmt, args)
 
     async def snooze_job(self, job: Job, seconds: int) -> None:
         async with self._driver.connection() as conn:
@@ -181,6 +153,43 @@ class Query:
 
                 await conn.execute(stmt, args)
 
+    # Leadership
+
+    async def attempt_leadership(
+        self, name: str, node: str, ttl: int, is_leader: bool
+    ) -> bool:
+        async with self._driver.connection() as conn:
+            async with conn.transaction():
+                cleanup_stmt = load_file("cleanup_expired_leaders.sql", self._prefix)
+
+                await conn.execute(cleanup_stmt)
+
+                if is_leader:
+                    elect_stmt = load_file("reelect_leader.sql", self._prefix)
+                else:
+                    elect_stmt = load_file("elect_leader.sql", self._prefix)
+
+                args = {"name": name, "node": node, "ttl": ttl}
+                rows = await conn.execute(elect_stmt, args)
+                result = await rows.fetchone()
+
+                return result is not None and result[0] == node
+
+    async def resign_leader(self, name: str, node: str) -> None:
+        async with self._driver.connection() as conn:
+            stmt = load_file("resign_leader.sql", self._prefix)
+            args = {"name": name, "node": node}
+
+            await conn.execute(stmt, args)
+
+    # Schema
+
+    async def install(self) -> None:
+        async with self._driver.connection() as conn:
+            stmt = load_file("install.sql", self._prefix)
+
+            await conn.execute(stmt)
+
     async def uninstall(self) -> None:
         async with self._driver.connection() as conn:
             stmt = load_file("uninstall.sql", self._prefix)
@@ -195,3 +204,45 @@ class Query:
             results = await rows.fetchall()
 
             return [table for (table,) in results]
+
+    # Producer
+
+    async def cleanup_expired_producers(self, max_age: float) -> int:
+        async with self._driver.connection() as conn:
+            stmt = load_file("cleanup_expired_producers.sql", self._prefix)
+            args = {"max_age": max_age}
+
+            result = await conn.execute(stmt, args)
+
+            return result.rowcount
+
+    async def delete_producer(self, uuid: str) -> None:
+        async with self._driver.connection() as conn:
+            stmt = load_file("delete_producer.sql", self._prefix)
+            args = {"uuid": uuid}
+
+            await conn.execute(stmt, args)
+
+    async def insert_producer(
+        self, uuid: str, name: str, node: str, queue: str, meta: dict[str, Any]
+    ) -> None:
+        async with self._driver.connection() as conn:
+            stmt = load_file("insert_producer.sql", self._prefix)
+            args = {
+                "uuid": uuid,
+                "name": name,
+                "node": node,
+                "queue": queue,
+                "meta": json.dumps(meta),
+            }
+
+            await conn.execute(stmt, args)
+
+    async def refresh_producers(self, uuids: list[str]) -> int:
+        async with self._driver.connection() as conn:
+            stmt = load_file("refresh_producers.sql", self._prefix)
+            args = {"uuids": uuids}
+
+            result = await conn.execute(stmt, args)
+
+            return result.rowcount
