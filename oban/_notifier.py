@@ -68,13 +68,19 @@ class Notifier(Protocol):
         """Stop the notifier and clean up resources."""
         ...
 
-    async def listen(self, channel: str, callback: Callable[[str, dict], Any]) -> str:
+    async def listen(
+        self, channel: str, callback: Callable[[str, dict], Any], wait: bool = True
+    ) -> str:
         """Register a callback for a channel.
 
         Args:
             channels: Channel name to listen on
-            callback: Function called when notification received.
-                     Receives (channel, payload) as arguments where payload is a dict.
+            callback: Sync or async function called when notification received.
+                      Receives (channel, payload) as arguments where payload is a dict.
+                      Async callbacks are executed in the background without blocking.
+            wait: If True, blocks until the subscription is fully established and ready to
+                  receive notifications. If False, returns immediately after registering.
+                  Defaults to True for test reliability.
 
         Returns:
             Token (UUID string) used to unregister this subscription
@@ -167,7 +173,9 @@ class PostgresNotifier:
         except Exception:
             pass
 
-    async def listen(self, channel: str, callback: Callable[[str, dict], Any]) -> str:
+    async def listen(
+        self, channel: str, callback: Callable[[str, dict], Any], wait: bool = True
+    ) -> str:
         token = str(uuid4())
 
         if channel not in self._subscriptions:
@@ -177,7 +185,7 @@ class PostgresNotifier:
         self._tokens[token] = channel
         self._subscriptions[channel][token] = callback
 
-        if channel in self._listen_events:
+        if wait and channel in self._listen_events:
             await self._listen_events[channel].wait()
 
         return token
@@ -275,7 +283,10 @@ class PostgresNotifier:
         if channel in self._subscriptions:
             for callback in self._subscriptions[channel].values():
                 try:
-                    callback(channel, payload)
+                    if asyncio.iscoroutinefunction(callback):
+                        asyncio.create_task(callback(channel, payload))
+                    else:
+                        callback(channel, payload)
                 except Exception:
                     pass
 

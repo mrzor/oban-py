@@ -4,6 +4,7 @@ import asyncio
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from ._notifier import Notifier
     from ._query import Query
 
 
@@ -25,6 +26,7 @@ class Leader:
         interval: float = 30.0,
         name: str = "oban",
         node: str,
+        notifier: Notifier,
         query: Query,
     ) -> None:
         """Initialize a Leader instance.
@@ -35,9 +37,11 @@ class Leader:
         self._interval = interval
         self._name = name
         self._node = node
+        self._notifier = notifier
         self._query = query
 
         self._is_leader = False
+        self._listen_token = None
         self._loop_task = None
         self._started = asyncio.Event()
 
@@ -50,11 +54,17 @@ class Leader:
             self._started.set()
             return
 
+        self._listen_token = await self._notifier.listen(
+            "leader", self._on_leader_notification, wait=False
+        )
         self._loop_task = asyncio.create_task(self._loop(), name="oban-leader")
 
         await self._started.wait()
 
     async def stop(self) -> None:
+        if self._listen_token:
+            await self._notifier.unlisten(self._listen_token)
+
         if self._loop_task:
             self._loop_task.cancel()
 
@@ -64,12 +74,15 @@ class Leader:
                 pass
 
         if self._is_leader:
+            payload = {"action": "resign", "node": self._node, "name": self._name}
+
+            await self._notifier.notify("leader", payload)
             await self._query.resign_leader(self._name, self._node)
 
     async def _loop(self) -> None:
         while True:
             try:
-                self._is_leader = await self._attempt_election()
+                await self._attempt_election()
             except asyncio.CancelledError:
                 break
             except Exception:
@@ -84,7 +97,10 @@ class Leader:
 
             await asyncio.sleep(sleep_duration)
 
-    async def _attempt_election(self) -> bool:
-        return await self._query.attempt_leadership(
+    async def _attempt_election(self) -> None:
+        self._is_leader = await self._query.attempt_leadership(
             self._name, self._node, int(self._interval), self._is_leader
         )
+
+    async def _on_leader_notification(self, _channel: str, _payload: dict) -> None:
+        await self._attempt_election()

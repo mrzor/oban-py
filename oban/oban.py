@@ -83,7 +83,11 @@ class Oban:
         }
 
         self._leader = Leader(
-            query=self._query, node=self._node, name=name, enabled=leadership
+            query=self._query,
+            node=self._node,
+            name=name,
+            enabled=leadership,
+            notifier=self._notifier,
         )
 
         self._stager = Stager(

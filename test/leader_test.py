@@ -1,3 +1,4 @@
+import asyncio
 import pytest
 
 
@@ -49,4 +50,31 @@ class TestLeadership:
 
             assert oban_2.is_leader
         finally:
+            await oban_2.stop()
+
+    @pytest.mark.oban(leadership=True)
+    async def test_leader_notifies_on_shutdown(self, oban_instance):
+        oban_1 = oban_instance()
+        oban_2 = oban_instance()
+
+        try:
+            await oban_1.start()
+            await oban_2.start()
+
+            assert oban_1.is_leader != oban_2.is_leader
+
+            lead = oban_1 if oban_1.is_leader else oban_2
+            peer = oban_2 if oban_1.is_leader else oban_1
+
+            await lead.stop()
+
+            # The default interval is 30.0s, this waits 0.5s total
+            for _ in range(100):
+                if peer.is_leader:
+                    break
+                await asyncio.sleep(0.005)
+
+            assert peer.is_leader
+        finally:
+            await oban_1.stop()
             await oban_2.stop()
