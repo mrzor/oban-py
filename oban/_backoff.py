@@ -44,8 +44,30 @@ def jitter(
             return time + diff if rand >= 0.5 else time - diff
 
 
+def jittery_exponential(
+    attempt: int, *, max_pow: int = 10, min_pad: int = 0, mult: int = 1
+) -> int:
+    """Calculate exponential backoff with jitter.
+
+    Args:
+        attempt: The retry attempt number
+        max_pow: Maximum power of 2 (default: 10, caps at ~1024 seconds)
+        min_pad: Minimum padding in seconds (default: 0)
+        mult: Multiplier for the exponential value (default: 1)
+
+    Returns:
+        Backoff delay in seconds with jitter applied
+    """
+    time = exponential(attempt, max_pow=max_pow, min_pad=min_pad, mult=mult)
+
+    return jitter(time, mode="both")
+
+
 def jittery_clamped(attempt: int, max_attempts: int, *, clamped_max: int = 20) -> int:
-    """Calculate jittery clamped backoff.
+    """Calculate jittery clamped backoff for job retries.
+
+    Clamps the attempt number proportionally to max_attempts, then applies
+    exponential backoff with a minimum padding and jitter that only increases.
 
     Args:
         attempt: The retry attempt number
