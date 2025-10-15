@@ -73,7 +73,7 @@ class Oban:
         self._node = node or socket.gethostname()
         self._query = Query(conn, prefix)
 
-        self._notifier = notifier or PostgresNotifier(query=self._query)
+        self._notifier = notifier or PostgresNotifier(query=self._query, prefix=prefix)
 
         self._producers = {
             queue: Producer(

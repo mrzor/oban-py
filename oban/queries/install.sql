@@ -104,6 +104,6 @@ ALTER TABLE oban_jobs SET (
 );
 
 -- Reduce page splits on the primary hot index
-ALTER INDEX CONCURRENTLY oban_jobs_state_queue_priority_scheduled_at_id_index SET (
+ALTER INDEX oban_jobs_state_queue_priority_scheduled_at_id_index SET (
   fillfactor = 90
 );

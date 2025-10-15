@@ -123,11 +123,15 @@ class PostgresNotifier:
         self,
         *,
         query: Query,
+        prefix: str = "public",
         beat_interval: float = 30.0,
+        connect_timeout: float = 5.0,
         notify_timeout: float = 0.1,
     ) -> None:
         self._query = query
+        self._prefix = prefix
         self._beat_interval = beat_interval
+        self._connect_timeout = connect_timeout
         self._notify_timeout = notify_timeout
 
         self._pending_listen = set()
@@ -140,6 +144,14 @@ class PostgresNotifier:
         self._loop_task = None
         self._beat_task = None
         self._reconnect_attempts = 0
+
+    def _to_full_channel(self, channel: str) -> str:
+        return f"{self._prefix}.oban_{channel}"
+
+    def _from_full_channel(self, full_channel: str) -> str:
+        (_prefix, channel) = full_channel.split(".", 1)
+
+        return channel[5:]
 
     async def start(self) -> None:
         await self._connect()
@@ -165,8 +177,6 @@ class PostgresNotifier:
         self._tokens[token] = channel
         self._subscriptions[channel][token] = callback
 
-        # The event will block the caller until LISTEN completes, primarily to prevent race
-        # conditions during testing.
         if channel in self._listen_events:
             await self._listen_events[channel].wait()
 
@@ -186,17 +196,19 @@ class PostgresNotifier:
                 self._pending_unlisten.add(channel)
 
     async def notify(self, channel: str, payload: dict) -> None:
-        await self._query.notify(channel, encode_payload(payload))
+        channel = self._to_full_channel(channel)
+        payload = encode_payload(payload)
+
+        await self._query.notify(channel, payload)
 
     async def _connect(self) -> None:
         async with self._query._driver.connection() as temp_conn:
             conninfo = temp_conn.info.dsn
 
         self._conn = await asyncio.wait_for(
-            AsyncConnection.connect(conninfo, autocommit=True), timeout=5.0
+            AsyncConnection.connect(conninfo, autocommit=True),
+            timeout=self._connect_timeout,
         )
-
-        await asyncio.wait_for(self._conn.execute("SELECT 1"), timeout=2.0)
 
         for channel in list(self._subscriptions.keys()):
             self._pending_listen.add(channel)
@@ -235,7 +247,9 @@ class PostgresNotifier:
 
     async def _process_pending(self) -> None:
         for channel in list(self._pending_listen):
-            await self._conn.execute(f"LISTEN {channel}")
+            full_channel = self._to_full_channel(channel)
+            await self._conn.execute(f'LISTEN "{full_channel}"')
+
             self._pending_listen.discard(channel)
 
             if channel in self._listen_events:
@@ -243,7 +257,9 @@ class PostgresNotifier:
                 del self._listen_events[channel]
 
         for channel in list(self._pending_unlisten):
-            await self._conn.execute(f"UNLISTEN {channel}")
+            full_channel = self._to_full_channel(channel)
+            await self._conn.execute(f'UNLISTEN "{full_channel}"')
+
             self._pending_unlisten.discard(channel)
 
     async def _process_notifications(self) -> None:
@@ -253,15 +269,13 @@ class PostgresNotifier:
             await self._dispatch(notify)
 
     async def _dispatch(self, notify) -> None:
-        channel = notify.channel
+        channel = self._from_full_channel(notify.channel)
         payload = decode_payload(notify.payload)
 
         if channel in self._subscriptions:
             for callback in self._subscriptions[channel].values():
                 try:
-                    result = callback(channel, payload)
-                    if asyncio.iscoroutine(result):
-                        await result
+                    callback(channel, payload)
                 except Exception:
                     pass
 
