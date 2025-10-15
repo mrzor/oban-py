@@ -20,6 +20,15 @@ class Driver(Protocol):
         """
         ...
 
+    @property
+    def conninfo(self) -> str:
+        """Return the connection string for creating new connections.
+
+        Returns:
+            Connection string with credentials intact.
+        """
+        ...
+
 
 class PsycopgPoolDriver:
     def __init__(self, pool: AsyncConnectionPool) -> None:
@@ -27,6 +36,10 @@ class PsycopgPoolDriver:
 
     def connection(self) -> Any:
         return self._pool.connection()
+
+    @property
+    def conninfo(self) -> str:
+        return self._pool.conninfo
 
 
 class PsycopgConnDriver:
@@ -36,6 +49,10 @@ class PsycopgConnDriver:
     @asynccontextmanager
     async def connection(self) -> AsyncIterator[AsyncConnection]:
         yield self._conn
+
+    @property
+    def conninfo(self) -> str:
+        return self._conn.info.dsn
 
 
 def wrap_conn(conn_or_pool: Any) -> Driver:
