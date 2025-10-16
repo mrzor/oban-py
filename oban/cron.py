@@ -3,15 +3,16 @@ from __future__ import annotations
 import re
 
 from dataclasses import dataclass
+from datetime import datetime, timezone
 
 DOW_DICT = {
-    "SUN": "0",
     "MON": "1",
     "TUE": "2",
     "WED": "3",
     "THU": "4",
     "FRI": "5",
     "SAT": "6",
+    "SUN": "7",
 }
 
 MON_DICT = {
@@ -31,9 +32,9 @@ MON_DICT = {
 
 MIN_SET = frozenset(range(0, 60))
 HRS_SET = frozenset(range(0, 24))
-DAY_SET = frozenset(range(1, 31))
-MON_SET = frozenset(range(1, 12))
-DOW_SET = frozenset(range(0, 7))
+DAY_SET = frozenset(range(1, 32))
+MON_SET = frozenset(range(1, 13))
+DOW_SET = frozenset(range(1, 8))
 
 NICKNAMES = {
     "@annually": "0 0 1 1 *",
@@ -128,6 +129,7 @@ class Expression:
 
     @classmethod
     def parse(cls, input: str) -> Expression:
+        """Parse a crontab expression into an expression object"""
         if input in NICKNAMES:
             input = NICKNAMES[input]
 
@@ -146,3 +148,15 @@ class Expression:
                 )
             case _:
                 raise ValueError(f"incorrect number of fields: {input}")
+
+    def is_now(self, time: None | datetime = None) -> bool:
+        """Check whether a cron expression matches the current date and time."""
+        time = time or datetime.now(timezone.utc)
+
+        return (
+            time.month in self.months
+            and time.isoweekday() in self.weekdays
+            and time.day in self.days
+            and time.hour in self.hours
+            and time.minute in self.minutes
+        )
