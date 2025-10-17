@@ -1,9 +1,15 @@
 from __future__ import annotations
 
+import asyncio
 import re
-
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .job import Job
+    from .leader import Leader
+    from ._query import Query
 
 DOW_DICT = {
     "MON": "1",
@@ -45,6 +51,9 @@ NICKNAMES = {
     "@daily": "0 0 * * *",
     "@hourly": "0 * * * *",
 }
+
+# TODO: Type this, and get a real structure.
+_table = []
 
 
 def _trans_field(input: str, mapper: dict) -> str:
@@ -160,3 +169,56 @@ class Expression:
             and time.hour in self.hours
             and time.minute in self.minutes
         )
+
+
+# TODO: Look into a better name than just "Cron", it's not an action. What about naming this scheduler
+# instead?
+class Cron:
+    def __init__(
+        self,
+        *,
+        leader: Leader,
+        query: Query,
+    ) -> None:
+        self._leader = leader
+        self._query = query
+
+        self._loop_task = None
+
+    async def start(self) -> None:
+        self._loop_task = asyncio.create_task(self._loop(), name="oban-cron")
+
+    async def stop(self) -> None:
+        self._loop_task.cancel()
+
+        try:
+            await self._loop_task
+        except asyncio.CancelledError:
+            pass
+
+    async def _loop(self) -> None:
+        while True:
+            try:
+                await asyncio.sleep(self._time_to_next_minute())
+
+                if self._leader.is_leader:
+                    await self._evaluate()
+            except asyncio.CancelledError:
+                break
+
+    async def _evaluate(self) -> None:
+        jobs = [self._build(*entry) for entry in _table if entry[0].is_now]
+
+        # TODO: Actually enqueue them. We want to use `oban.enqueue_many` to get the
+        # notifications.
+        print(jobs)
+
+    # TODO: Figure out what we're actually using to enqueue here
+    def _build(expr, thingy, opts) -> Job:
+        pass
+
+    def _time_to_next_minute(self, time: None | datetime = None) -> float:
+        time = time or datetime.now(timezone.utc)
+        next_minute = (time + timedelta(minutes=1)).replace(second=0, microsecond=0)
+
+        return (next_minute - time).total_seconds()

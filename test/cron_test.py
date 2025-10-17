@@ -1,9 +1,9 @@
 import pytest
 import random
 
-from datetime import datetime
+from datetime import datetime, timezone
 
-from oban.cron import Expression
+from oban.cron import Cron, Expression
 
 
 class TestExpressionParse:
@@ -83,3 +83,35 @@ class TestExpressionIsNow:
         sunday = datetime.now().replace(year=2025, month=10, day=12)
 
         assert Expression.parse("* * * * SUN").is_now(sunday)
+
+
+class TestCronTimeToNextMinute:
+    @pytest.fixture
+    def cron(self):
+        return Cron(leader=None, query=None)
+
+    def time_to_next_minute(self, cron, *, hour=12, minute=34, second=0, microsecond=0):
+        time = datetime.now(timezone.utc).replace(
+            hour=hour, minute=minute, second=second, microsecond=microsecond
+        )
+
+        return cron._time_to_next_minute(time)
+
+    def test_seconds_until_next_minute(self, cron):
+        assert self.time_to_next_minute(cron, second=0) == 60.0
+        assert self.time_to_next_minute(cron, second=1) == 59.0
+        assert self.time_to_next_minute(cron, second=30) == 30.0
+        assert self.time_to_next_minute(cron, second=59) == 1.0
+
+    def test_at_end_of_hour(self, cron):
+        assert self.time_to_next_minute(cron, minute=59, second=45) == 15.0
+
+    def test_at_end_of_day(self, cron):
+        assert self.time_to_next_minute(cron, hour=23, minute=59, second=30) == 30.0
+
+    @pytest.mark.parametrize("second", [0, 15, 30, 45, 59])
+    @pytest.mark.parametrize("micro", [0, 500000, 999999])
+    def test_always_returns_positive_value_in_range(self, cron, second, micro):
+        result = self.time_to_next_minute(cron, second=second, microsecond=micro)
+
+        assert 0 < result <= 60.0

@@ -30,29 +30,24 @@ class Pruner:
         self._loop_task = asyncio.create_task(self._loop(), name="oban-pruner")
 
     async def stop(self) -> None:
-        if self._loop_task:
-            self._loop_task.cancel()
+        self._loop_task.cancel()
 
-            try:
-                await self._loop_task
-            except asyncio.CancelledError:
-                pass
+        try:
+            await self._loop_task
+        except asyncio.CancelledError:
+            pass
 
     async def _loop(self) -> None:
         while True:
             try:
-                # Pruning doesn't need to happen immediately on start, so we invert the loop to
-                # sleep first and prune after the delay.
                 await asyncio.sleep(self._interval)
 
-                await self._prune()
+                if self._leader.is_leader:
+                    await self._prune()
             except asyncio.CancelledError:
                 break
             except Exception:
                 pass
 
     async def _prune(self) -> None:
-        if not self._leader.is_leader:
-            return
-
         await self._query.prune_jobs(self._max_age, self._limit)
