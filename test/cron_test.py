@@ -59,6 +59,74 @@ class TestExpressionParse:
         assert {1, 8, 15, 22} == Expression.parse("* 1/7 * * *").hours
         assert {1, 8} == Expression.parse("* 1-14/7 * * *").hours
 
+    @pytest.mark.parametrize("seed", range(1, 20))
+    def test_parsing_valid_expression_combinations(self, seed):
+        random.seed(seed)
+
+        def wildcard(_min_val, _max_val):
+            return "*"
+
+        def literal(min_val, max_val):
+            return str(random.randint(min_val, max_val))
+
+        def step_from_literal(min_val, max_val):
+            base = random.randint(min_val, max_val)
+            step = random.randint(2, max(2, (max_val - min_val) // 2))
+
+            return f"{base}/{step}"
+
+        def step_from_wildcard(min_val, max_val):
+            step = random.randint(2, max(2, max_val - min_val))
+
+            return f"*/{step}"
+
+        def range_expr(min_val, max_val):
+            start = random.randint(min_val, max_val - 1)
+            end = random.randint(start + 1, max_val)
+
+            return f"{start}-{end}"
+
+        def range_with_step(min_val, max_val):
+            start = random.randint(min_val, max_val - 2)
+            end = random.randint(start + 2, max_val)
+            step = 2
+
+            return f"{start}-{end}/{step}"
+
+        def list_expr(min_val, max_val):
+            count = random.randint(2, min(5, max_val - min_val + 1))
+            values = random.sample(range(min_val, max_val + 1), count)
+
+            return ",".join(str(val) for val in sorted(values))
+
+        generators = {
+            "minute": (0, 59),
+            "hour": (0, 23),
+            "day": (1, 31),
+            "month": (1, 12),
+            "weekday": (1, 7),
+        }
+
+        patterns = [
+            wildcard,
+            literal,
+            step_from_literal,
+            step_from_wildcard,
+            range_expr,
+            range_with_step,
+            list_expr,
+        ]
+
+        picks = random.sample(patterns, 5)
+        parts = []
+
+        for gen, (_field, (min_val, max_val)) in zip(picks, generators.items()):
+            parts.append(gen(min_val, max_val))
+
+        expression = " ".join(parts)
+
+        assert isinstance(Expression.parse(expression), Expression)
+
 
 class TestExpressionIsNow:
     @pytest.mark.parametrize("seed", range(1, 10))
