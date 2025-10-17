@@ -2,6 +2,7 @@ import pytest
 import random
 
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 from oban import job, worker
 from oban._scheduler import Expression, Scheduler, _scheduled_entries
@@ -276,6 +277,29 @@ class TestSchedulerEvaluate:
         assert job.meta["cron"] is True
         assert job.meta["cron_expr"] == "* * * * *"
         assert "cron_name" in job.meta
+
+    @pytest.mark.asyncio
+    async def test_uses_configured_timezone(self, mock_query):
+        chi_tz = ZoneInfo("America/Chicago")
+        chi_now = datetime.now(chi_tz)
+        utc_now = datetime.now(timezone.utc)
+
+        scheduler = Scheduler(leader=None, query=mock_query, timezone=chi_tz)
+
+        @worker(queue="chi", cron=f"* {chi_now.hour} * * *")
+        class ChiWorker:
+            def process(self, job):
+                pass
+
+        @worker(queue="utc", cron=f"* {utc_now.hour} * * *")
+        class UtcWorker:
+            def process(self, job):
+                pass
+
+        await scheduler._evaluate()
+
+        assert len(mock_query.enqueued_jobs) == 1
+        assert mock_query.enqueued_jobs[0].queue == "chi"
 
 
 class TestSchedulerTimeToNextMinute:

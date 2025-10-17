@@ -13,6 +13,7 @@ from ._producer import Producer
 from ._pruner import Pruner
 from ._query import Query
 from ._refresher import Refresher
+from ._scheduler import Scheduler
 from ._stager import Stager
 
 _instances: dict[str, Oban] = {}
@@ -32,6 +33,7 @@ class Oban:
         pruner: dict[str, Any] = {},
         queues: dict[str, int] | None = None,
         refresher: dict[str, Any] = {},
+        scheduler: dict[str, Any] = {},
         stager: dict[str, Any] = {},
     ) -> None:
         """Initialize an Oban instance.
@@ -55,6 +57,7 @@ class Oban:
                     interval (default: 60.0), limit (default: 20_000).
             queues: Queue names mapped to worker limits (default: {})
             refresher: Refresher config options: interval (default: 15.0), max_age (default: 60.0)
+            scheduler: Scheduler config options: timezone (default: timezone.utc)
             stager: Stager config options: interval (default: 1.0), limit (default: 20_000)
         """
         queues = queues or {}
@@ -105,6 +108,12 @@ class Oban:
             **refresher,
         )
 
+        self._scheduler = Scheduler(
+            leader=self._leader,
+            query=self._query,
+            **scheduler,
+        )
+
         _instances[name] = self
 
     async def __aenter__(self) -> Oban:
@@ -138,6 +147,7 @@ class Oban:
             self._lifeline.start(),
             self._pruner.start(),
             self._refresher.start(),
+            self._scheduler.start(),
         ]
 
         for producer in self._producers.values():
@@ -155,6 +165,7 @@ class Oban:
             self._lifeline.stop(),
             self._pruner.stop(),
             self._refresher.stop(),
+            self._scheduler.stop(),
         ]
 
         for producer in self._producers.values():

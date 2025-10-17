@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import re
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone, tzinfo
 from typing import TYPE_CHECKING
 
 from ._worker import worker_name
@@ -247,9 +247,11 @@ class Scheduler:
         *,
         leader: Leader,
         query: Query,
+        timezone: tzinfo = timezone.utc,
     ) -> None:
         self._leader = leader
         self._query = query
+        self._timezone = timezone
 
         self._loop_task = None
 
@@ -275,7 +277,7 @@ class Scheduler:
                 break
 
     async def _evaluate(self) -> None:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(self._timezone)
 
         jobs = [
             self._build_job(entry)
