@@ -5,6 +5,7 @@ This module provides utilities for unit testing workers without database interac
 
 from __future__ import annotations
 
+import asyncio
 import json
 
 from contextlib import contextmanager
@@ -135,52 +136,6 @@ async def all_enqueued(*, oban: str | Oban = "oban", **filters) -> list[Job]:
     return [job for job in jobs if _match_filters(job, filters)]
 
 
-async def assert_enqueued(*, oban: str | Oban = "oban", **filters):
-    """Assert that a job matching the given criteria was enqueued.
-
-    This helper queries the database for jobs in 'available' or 'scheduled' state
-    that match the provided filters.
-
-    Args:
-        oban: Oban instance name (default: "oban") or Oban instance
-        **filters: Job fields to match (e.g., worker=EmailWorker, args={"to": "..."},
-                   queue="mailers", priority=5). Args supports partial matching.
-
-    Raises:
-        AssertionError: If no matching job is found
-
-    Example:
-        >>> from oban.testing import assert_enqueued
-        >>> from app.workers import EmailWorker
-        >>>
-        >>> # Assert job was enqueued with specific worker and args
-        >>> async def test_signup_sends_email(app):
-        ...     await app.post("/signup", json={"email": "user@example.com"})
-        ...     await assert_enqueued(worker=EmailWorker, args={"to": "user@example.com"})
-        >>>
-        >>> # Match on queue alone
-        >>> await assert_enqueued(queue="mailers")
-        >>>
-        >>> # Partial args matching
-        >>> await assert_enqueued(worker=EmailWorker, args={"to": "user@example.com"})
-        >>>
-        >>> # Filter by queue and priority
-        >>> await assert_enqueued(worker=EmailWorker, queue="mailers", priority=5)
-        >>>
-        >>> # Use an alternate oban instance
-        >>> await assert_enqueued(worker=BatchWorker, oban="batch")
-    """
-    matching = await all_enqueued(oban=oban, **filters)
-
-    if not matching:
-        all_jobs = await all_enqueued(oban=oban)
-        formatted = "\n".join(f"  {job}" for job in all_jobs)
-
-        raise AssertionError(
-            f"Expected a job matching: {filters} to be enqueued. Instead found:\n\n{formatted}"
-        )
-
-
 def _match_filters(job: Job, filters: dict) -> bool:
     for key, value in filters.items():
         if key == "args":
@@ -198,6 +153,129 @@ def _args_match(expected: dict, actual: dict) -> bool:
             return False
 
     return True
+
+
+async def assert_enqueued(*, oban: str | Oban = "oban", timeout: float = 0, **filters):
+    """Assert that a job matching the given criteria was enqueued.
+
+    This helper queries the database for jobs in 'available' or 'scheduled' state
+    that match the provided filters. With a timeout, it will poll repeatedly until
+    a matching job is found or the timeout expires.
+
+    Args:
+        oban: Oban instance name (default: "oban") or Oban instance
+        timeout: Maximum time to wait for a matching job (in seconds). Default: 0 (no wait)
+        **filters: Job fields to match (e.g., worker=EmailWorker, args={"to": "..."},
+                   queue="mailers", priority=5). Args supports partial matching.
+
+    Raises:
+        AssertionError: If no matching job is found within the timeout
+
+    Example:
+        >>> from oban.testing import assert_enqueued
+        >>> from app.workers import EmailWorker
+        >>>
+        >>> # Assert job was enqueued with specific worker and args
+        >>> async def test_signup_sends_email(app):
+        ...     await app.post("/signup", json={"email": "user@example.com"})
+        ...     await assert_enqueued(worker=EmailWorker, args={"to": "user@example.com"})
+        >>>
+        >>> # Wait up to 0.2 seconds for an async job to be enqueued
+        >>> await assert_enqueued(worker=EmailWorker, timeout=0.2)
+        >>>
+        >>> # Match on queue alone
+        >>> await assert_enqueued(queue="mailers")
+        >>>
+        >>> # Partial args matching
+        >>> await assert_enqueued(worker=EmailWorker, args={"to": "user@example.com"})
+        >>>
+        >>> # Filter by queue and priority
+        >>> await assert_enqueued(worker=EmailWorker, queue="mailers", priority=5)
+        >>>
+        >>> # Use an alternate oban instance
+        >>> await assert_enqueued(worker=BatchWorker, oban="batch")
+    """
+
+    async def has_matching_jobs():
+        jobs = await all_enqueued(oban=oban, **filters)
+
+        return bool(jobs)
+
+    if not await _poll_until(has_matching_jobs, timeout):
+        all_jobs = await all_enqueued(oban=oban)
+        formatted = "\n".join(f"  {job}" for job in all_jobs)
+        timeout_msg = f" within {timeout}s" if timeout > 0 else ""
+
+        raise AssertionError(
+            f"Expected a job matching: {filters} to be enqueued{timeout_msg}. Instead found:\n\n{formatted}"
+        )
+
+
+async def refute_enqueued(*, oban: str | Oban = "oban", timeout: float = 0, **filters):
+    """Assert that no job matching the given criteria was enqueued.
+
+    This helper queries the database for jobs in 'available' or 'scheduled' state
+    that match the provided filters and asserts that none are found. With a timeout,
+    it will poll repeatedly during the timeout period to ensure no matching job appears.
+
+    Args:
+        oban: Oban instance name (default: "oban") or Oban instance
+        timeout: Time to monitor for matching jobs (in seconds). Default: 0 (check once)
+        **filters: Job fields to match (e.g., worker=EmailWorker, args={"to": "..."},
+                   queue="mailers", priority=5). Args supports partial matching.
+
+    Raises:
+        AssertionError: If any matching jobs are found
+
+    Example:
+        >>> from oban.testing import refute_enqueued
+        >>> from app.workers import EmailWorker
+        >>>
+        >>> # Assert no email jobs were enqueued
+        >>> async def test_no_email_on_invalid_signup(app):
+        ...     await app.post("/signup", json={"email": "invalid"})
+        ...     await refute_enqueued(worker=EmailWorker)
+        >>>
+        >>> # Monitor for 0.2 seconds to ensure no async job is enqueued
+        >>> await refute_enqueued(worker=EmailWorker, timeout=0.2)
+        >>>
+        >>> # Refute specific args
+        >>> await refute_enqueued(worker=EmailWorker, args={"to": "blocked@example.com"})
+        >>>
+        >>> # Refute on queue
+        >>> await refute_enqueued(queue="mailers")
+    """
+
+    async def has_matching_jobs():
+        jobs = await all_enqueued(oban=oban, **filters)
+
+        return bool(jobs)
+
+    if await _poll_until(has_matching_jobs, timeout):
+        matching = await all_enqueued(oban=oban, **filters)
+        formatted = "\n".join(f"  {job}" for job in matching)
+        timeout_msg = f" within {timeout}s" if timeout > 0 else ""
+
+        raise AssertionError(
+            f"Expected no jobs matching: {filters} to be enqueued{timeout_msg}. Instead found:\n\n{formatted}"
+        )
+
+
+async def _poll_until(condition, timeout: float, interval: float = 0.01) -> bool:
+    if timeout <= 0:
+        return await condition()
+
+    elapsed = 0.0
+
+    while elapsed < timeout:
+        elapsed += interval
+
+        if await condition():
+            return True
+
+        await asyncio.sleep(interval)
+
+    return await condition()
 
 
 def process_job(job: Job):

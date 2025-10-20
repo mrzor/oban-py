@@ -2,7 +2,13 @@ import asyncio
 import pytest
 
 from oban import job, worker
-from oban.testing import all_enqueued, assert_enqueued, mode, process_job
+from oban.testing import (
+    all_enqueued,
+    assert_enqueued,
+    mode,
+    process_job,
+    refute_enqueued,
+)
 
 
 @worker()
@@ -245,3 +251,95 @@ class TestAssertEnqueued:
         assert "Expected a job matching" in message
         assert "worker" in message
         assert "Job(id=1, worker=Alpha" in message
+
+    @pytest.mark.oban(queues={})
+    async def test_assert_enqueued_with_timeout(self, oban_instance):
+        @worker()
+        class Alpha:
+            def process(self, job):
+                pass
+
+        oban = oban_instance()
+
+        async def enqueue_after_delay():
+            await asyncio.sleep(0.02)
+            await oban.enqueue(Alpha.new({"id": 1}))
+
+        asyncio.create_task(enqueue_after_delay())
+
+        await assert_enqueued(worker=Alpha, timeout=0.05)
+
+    @pytest.mark.oban(queues={})
+    async def test_assert_enqueued_timeout_expires(self, oban_instance):
+        @worker()
+        class Alpha:
+            def process(self, job):
+                pass
+
+        oban_instance()
+
+        with pytest.raises(AssertionError, match="within 0.01s"):
+            await assert_enqueued(worker=Alpha, timeout=0.01)
+
+
+class TestRefuteEnqueued:
+    @pytest.mark.oban(queues={})
+    async def test_refute_enqueued_passes_when_no_match(self, oban_instance):
+        @worker(queue="alpha")
+        class Alpha:
+            def process(self, job):
+                pass
+
+        oban = oban_instance()
+        await oban.enqueue(Alpha.new({"id": 1}))
+
+        await refute_enqueued(worker=Alpha, args={"id": 999})
+        await refute_enqueued(queue="omega")
+
+    @pytest.mark.oban(queues={})
+    async def test_refute_enqueued_raises_when_match_found(self, oban_instance):
+        @worker(queue="alpha")
+        class Alpha:
+            def process(self, job):
+                pass
+
+        oban = oban_instance()
+        await oban.enqueue(Alpha.new({"id": 1}))
+
+        with pytest.raises(AssertionError) as exc_info:
+            await refute_enqueued(worker=Alpha)
+
+        message = str(exc_info.value)
+
+        assert "Expected no jobs matching" in message
+        assert "worker" in message
+        assert "Job(id=1, worker=Alpha" in message
+
+    @pytest.mark.oban(queues={})
+    async def test_refute_enqueued_with_timeout_passes(self, oban_instance):
+        @worker()
+        class Alpha:
+            def process(self, job):
+                pass
+
+        oban_instance()
+
+        await refute_enqueued(worker=Alpha, timeout=0.05)
+
+    @pytest.mark.oban(queues={})
+    async def test_refute_enqueued_with_timeout_fails(self, oban_instance):
+        @worker()
+        class Alpha:
+            def process(self, job):
+                pass
+
+        oban = oban_instance()
+
+        async def enqueue_after_delay():
+            await asyncio.sleep(0.02)
+            await oban.enqueue(Alpha.new({"id": 1}))
+
+        asyncio.create_task(enqueue_after_delay())
+
+        with pytest.raises(AssertionError, match="within 0.1s"):
+            await refute_enqueued(worker=Alpha, timeout=0.1)
