@@ -269,6 +269,13 @@ class Query:
 
             return result.rowcount
 
+    async def update_producer(self, uuid: str, meta: dict[str, Any]) -> None:
+        async with self._driver.connection() as conn:
+            stmt = load_file("update_producer.sql", self._prefix)
+            args = {"uuid": uuid, "meta": json.dumps(meta)}
+
+            await conn.execute(stmt, args)
+
     # Notifier
 
     async def notify(self, channel: str, payloads: list[str]) -> None:

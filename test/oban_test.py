@@ -213,3 +213,66 @@ class TestIntegration:
             await with_backoff(lambda: self.assert_processed(1))
             await with_backoff(lambda: self.assert_processed(2))
             await with_backoff(lambda: self.assert_processed(3))
+
+
+class TestPauseQueue:
+    def teardown_method(self):
+        Worker.processed.clear()
+
+    def assert_processed(self, ref):
+        assert ref in Worker.processed
+
+    def assert_not_processed(self, ref):
+        assert ref not in Worker.processed
+
+    @pytest.mark.oban(queues={"default": 2})
+    async def test_paused_queue_does_not_execute_new_jobs(self, oban_instance):
+        async with oban_instance() as oban:
+            await Worker.enqueue({"act": "ok", "ref": 1})
+
+            await oban.pause_queue("default")
+
+            await asyncio.sleep(0.1)
+
+            await Worker.enqueue({"act": "ok", "ref": 2})
+            await Worker.enqueue({"act": "ok", "ref": 3})
+
+            await asyncio.sleep(0.1)
+
+            self.assert_processed(1)
+            self.assert_not_processed(2)
+            self.assert_not_processed(3)
+
+    @pytest.mark.oban(queues={"default": 2})
+    async def test_pause_queue_with_local(self, oban_instance):
+        oban_1 = oban_instance(node="node1")
+        oban_2 = oban_instance(node="node2")
+
+        await oban_1.start()
+        await oban_2.start()
+
+        try:
+            await oban_1.pause_queue("default", local=True)
+            await asyncio.sleep(0.1)
+
+            # TODO: This is entirely invasive. Switch to `check_queue()` when available
+            assert oban_1._producers["default"]._paused
+            assert not oban_2._producers["default"]._paused
+        finally:
+            await oban_1.stop()
+            await oban_2.stop()
+
+    @pytest.mark.oban(queues={"alpha": 1, "gamma": 1})
+    async def test_pause_queue_only_affects_specified_queue(self, oban_instance):
+        async with oban_instance() as oban:
+            await oban.pause_queue("alpha")
+            await asyncio.sleep(0.1)
+
+            # TODO: Also invasive, switch it up
+            assert oban._producers["alpha"]._paused
+            assert not oban._producers["gamma"]._paused
+
+    @pytest.mark.oban(queues={"default": 2})
+    async def test_validating_local_pause(self, oban_instance):
+        async with oban_instance() as oban:
+            await oban.pause_queue("nonexistent")

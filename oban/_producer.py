@@ -9,6 +9,7 @@ from ._executor import Executor
 from .job import Job
 
 if TYPE_CHECKING:
+    from ._notifier import Notifier
     from ._query import Query
 
 
@@ -20,6 +21,7 @@ class Producer:
         limit: int = 10,
         name: str,
         node: str,
+        notifier: Notifier,
         query: Query,
         queue: str = "default",
     ) -> None:
@@ -27,13 +29,16 @@ class Producer:
         self._limit = limit
         self._name = name
         self._node = node
+        self._notifier = notifier
         self._query = query
         self._queue = queue
 
         self._executor = Executor(query, safe=True)
         self._last_fetch_time = 0.0
+        self._listen_token = None
         self._loop_task = None
         self._notified = asyncio.Event()
+        self._paused = False
         self._running_jobs = set()
         self._uuid = str(uuid4())
 
@@ -46,11 +51,18 @@ class Producer:
             meta={"local_limit": self._limit},
         )
 
+        self._listen_token = await self._notifier.listen(
+            "signal", self._on_notification, wait=False
+        )
+
         self._loop_task = asyncio.create_task(
             self._loop(), name=f"oban-producer-{self._queue}"
         )
 
     async def stop(self) -> None:
+        if self._listen_token:
+            await self._notifier.unlisten(self._listen_token)
+
         self._loop_task.cancel()
 
         await asyncio.gather(
@@ -61,6 +73,11 @@ class Producer:
 
     def notify(self) -> None:
         self._notified.set()
+
+    async def pause(self) -> None:
+        self._paused = True
+
+        await self._query.update_producer(uuid=self._uuid, meta={"paused": True})
 
     async def _loop(self) -> None:
         while True:
@@ -75,6 +92,9 @@ class Producer:
 
             try:
                 await self._debounce_fetch()
+
+                if self._paused:
+                    continue
 
                 demand = self._limit - len(self._running_jobs)
 
@@ -117,3 +137,17 @@ class Producer:
 
     async def _execute(self, job: Job) -> None:
         await self._executor.execute(job)
+
+    async def _on_notification(self, _channel: str, payload: dict) -> None:
+        ident = payload.get("ident")
+
+        if payload.get("queue") != self._queue:
+            return
+
+        # TODO: Encode the `ident` format somewhere else
+        if ident != "any" and ident != f"{self._name}.{self._node}":
+            return
+
+        # TODO: Switch to match when there are other actions
+        if payload.get("action") == "pause":
+            await self.pause()

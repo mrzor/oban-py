@@ -77,7 +77,12 @@ class Oban:
 
         self._producers = {
             queue: Producer(
-                query=self._query, name=name, node=self._node, queue=queue, limit=limit
+                query=self._query,
+                name=name,
+                node=self._node,
+                notifier=self._notifier,
+                queue=queue,
+                limit=limit,
             )
             for queue, limit in queues.items()
         }
@@ -258,6 +263,51 @@ class Oban:
 
             if asyncio.iscoroutine(result):
                 await result
+
+    async def pause_queue(
+        self, queue: str, *, local: bool = False, node: str | None = None
+    ) -> None:
+        """Pause a queue, preventing it from executing new jobs.
+
+        All running jobs will remain running until they are finished.
+
+        Args:
+            queue: The name of the queue to pause
+            local: If True, only pause on this node (default: False)
+            node: Specific node name to pause (mutually exclusive with local)
+
+        Raises:
+            ValueError: If both local=True and node are specified
+
+        Example:
+            Pause the default queue across all nodes:
+
+            >>> await oban.pause_queue("default")
+
+            Pause the default queue only on the local node:
+
+            >>> await oban.pause_queue("default", local=True)
+
+            Pause the default queue only on a particular node:
+
+            >>> await oban.pause_queue("default", node="worker.1")
+        """
+        if local and node:
+            raise ValueError("Cannot specify both local=True and node")
+
+        ident = self._scope_signal(local, node)
+
+        await self._notifier.notify(
+            "signal", {"action": "pause", "queue": queue, "ident": ident}
+        )
+
+    def _scope_signal(self, local: bool, node: str | None) -> str:
+        if local:
+            return f"{self._name}.{self._node}"
+        elif node is not None:
+            return f"{self._name}.{node}"
+        else:
+            return "any"
 
     async def _verify_structure(self) -> None:
         existing = await self._query.verify_structure()
