@@ -307,3 +307,52 @@ class TestCheckQueue:
     async def test_checking_state_for_inactive_queue(self, oban_instance):
         async with oban_instance() as oban:
             assert oban.check_queue("default") is None
+
+
+class TestPauseAndResumeAllQueues:
+    @pytest.mark.oban(queues={"alpha": 1, "gamma": 1, "delta": 1})
+    async def test_pausing_and_resuming_all_queues(self, oban_instance):
+        async with oban_instance() as oban:
+            await oban.pause_all_queues()
+
+            assert oban.check_queue("alpha").paused
+            assert oban.check_queue("gamma").paused
+            assert oban.check_queue("delta").paused
+
+            # Sleep to prevent overwrite
+            await asyncio.sleep(0.1)
+
+            await oban.resume_all_queues()
+
+            assert not oban.check_queue("alpha").paused
+            assert not oban.check_queue("gamma").paused
+            assert not oban.check_queue("delta").paused
+
+    @pytest.mark.oban(queues={"alpha": 1, "gamma": 1})
+    async def test_pausing_and_resuming_all_local_queues(self, oban_instance):
+        oban_1 = oban_instance(node="node.1")
+        oban_2 = oban_instance(node="node.2")
+
+        await oban_1.start()
+        await oban_2.start()
+
+        try:
+            await oban_1.pause_all_queues(local=True)
+
+            assert oban_1.check_queue("alpha").paused
+            assert oban_1.check_queue("gamma").paused
+
+            assert not oban_2.check_queue("alpha").paused
+            assert not oban_2.check_queue("gamma").paused
+
+            await oban_2.pause_all_queues(local=True)
+            await oban_1.resume_all_queues(local=True)
+
+            assert not oban_1.check_queue("alpha").paused
+            assert not oban_1.check_queue("gamma").paused
+
+            assert oban_2.check_queue("alpha").paused
+            assert oban_2.check_queue("gamma").paused
+        finally:
+            await oban_1.stop()
+            await oban_2.stop()

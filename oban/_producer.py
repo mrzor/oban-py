@@ -87,9 +87,9 @@ class Producer:
     async def resume(self) -> None:
         self._paused = False
 
-        # await self._query.update_producer(uuid=self._uuid, meta={"paused": False})
+        await self._query.update_producer(uuid=self._uuid, meta={"paused": False})
 
-        # self.notify()
+        self.notify()
 
     def check(self) -> QueueState:
         return QueueState(
@@ -162,8 +162,9 @@ class Producer:
 
     async def _on_notification(self, _channel: str, payload: dict) -> None:
         ident = payload.get("ident")
+        queue = payload.get("queue")
 
-        if payload.get("queue") != self._queue:
+        if queue != "*" and queue != self._queue:
             return
 
         if ident != "any" and ident != f"{self._name}.{self._node}":
