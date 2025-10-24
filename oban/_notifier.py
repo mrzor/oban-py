@@ -4,6 +4,7 @@ import asyncio
 import base64
 import gzip
 import json
+import logging
 from collections import defaultdict
 from typing import TYPE_CHECKING, Any, Callable, Protocol, runtime_checkable
 from uuid import uuid4
@@ -11,6 +12,8 @@ from uuid import uuid4
 from psycopg import AsyncConnection, OperationalError
 
 from ._backoff import jittery_exponential
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from ._query import Query
@@ -291,7 +294,11 @@ class PostgresNotifier:
                     else:
                         callback(channel, payload)
                 except Exception:
-                    pass
+                    logger.exception(
+                        "Error in notifier callback for channel %s with payload %s",
+                        channel,
+                        payload,
+                    )
 
     async def _beat(self) -> None:
         while True:

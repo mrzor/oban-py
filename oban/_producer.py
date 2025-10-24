@@ -21,17 +21,22 @@ class Producer:
         *,
         debounce_interval: float = 0.005,
         limit: int = 10,
+        paused: bool = False,
+        queue: str = "default",
         name: str,
         node: str,
         notifier: Notifier,
         query: Query,
-        queue: str = "default",
     ) -> None:
+        if limit < 1:
+            raise ValueError(f"Queue '{queue}' limit must be positive")
+
         self._debounce_interval = debounce_interval
         self._limit = limit
         self._name = name
         self._node = node
         self._notifier = notifier
+        self._paused = paused
         self._query = query
         self._queue = queue
 
@@ -40,41 +45,46 @@ class Producer:
         self._listen_token = None
         self._loop_task = None
         self._notified = asyncio.Event()
-        self._paused = False
         self._running_jobs = {}
         self._started_at = None
+        self._init_lock = asyncio.Lock()
         self._uuid = str(uuid4())
 
     async def start(self) -> None:
-        self._started_at = datetime.now(timezone.utc)
+        async with self._init_lock:
+            self._started_at = datetime.now(timezone.utc)
 
-        await self._query.insert_producer(
-            uuid=self._uuid,
-            name=self._name,
-            node=self._node,
-            queue=self._queue,
-            meta={"local_limit": self._limit, "paused": self._paused},
-        )
+            await self._query.insert_producer(
+                uuid=self._uuid,
+                name=self._name,
+                node=self._node,
+                queue=self._queue,
+                meta={"local_limit": self._limit, "paused": self._paused},
+            )
 
-        self._listen_token = await self._notifier.listen(
-            "signal", self._on_notification, wait=False
-        )
+            self._listen_token = await self._notifier.listen(
+                "signal", self._on_signal, wait=False
+            )
 
-        self._loop_task = asyncio.create_task(
-            self._loop(), name=f"oban-producer-{self._queue}"
-        )
+            self._loop_task = asyncio.create_task(
+                self._loop(), name=f"oban-producer-{self._queue}"
+            )
 
     async def stop(self) -> None:
-        if self._listen_token:
-            await self._notifier.unlisten(self._listen_token)
+        async with self._init_lock:
+            if self._listen_token:
+                await self._notifier.unlisten(self._listen_token)
 
-        self._loop_task.cancel()
+            if self._loop_task:
+                self._loop_task.cancel()
 
-        await asyncio.gather(
-            self._loop_task, *self._running_jobs.values(), return_exceptions=True
-        )
+                await asyncio.gather(
+                    self._loop_task,
+                    *self._running_jobs.values(),
+                    return_exceptions=True,
+                )
 
-        await self._query.delete_producer(self._uuid)
+            await self._query.delete_producer(self._uuid)
 
     def notify(self) -> None:
         self._notified.set()
@@ -166,7 +176,7 @@ class Producer:
     async def _execute(self, job: Job) -> None:
         await self._executor.execute(job)
 
-    async def _on_notification(self, _channel: str, payload: dict) -> None:
+    async def _on_signal(self, _channel: str, payload: dict) -> None:
         ident = payload.get("ident")
         queue = payload.get("queue")
 

@@ -226,14 +226,14 @@ class TestPauseAndResumeQueue:
                 executed.set()
 
         async with oban_instance() as oban:
-            await oban.pause_queue("default", local=True)
+            await oban.pause_queue("default")
 
             await Pausable.enqueue()
 
             await asyncio.sleep(0.05)
             assert not executed.is_set()
 
-            await oban.resume_queue("default", local=True)
+            await oban.resume_queue("default")
 
             await asyncio.sleep(0.05)
             assert executed.is_set()
@@ -253,7 +253,7 @@ class TestPauseAndResumeQueue:
             assert not oban.check_queue("alpha").paused
 
     @pytest.mark.oban(queues={"default": 2})
-    async def test_pause_queue_with_local(self, oban_instance):
+    async def test_pause_queue_with_node(self, oban_instance):
         oban_1 = oban_instance(node="node1")
         oban_2 = oban_instance(node="node2")
 
@@ -261,12 +261,12 @@ class TestPauseAndResumeQueue:
         await oban_2.start()
 
         try:
-            await oban_1.pause_queue("default", local=True)
+            await oban_1.pause_queue("default", node="node1")
 
             assert oban_1.check_queue("default").paused
             assert not oban_2.check_queue("default").paused
 
-            await oban_1.resume_queue("default", local=True)
+            await oban_1.resume_queue("default", node="node1")
 
             assert not oban_1.check_queue("default").paused
         finally:
@@ -346,7 +346,7 @@ class TestPauseAndResumeAllQueues:
             assert not oban.check_queue("delta").paused
 
     @pytest.mark.oban(queues={"alpha": 1, "gamma": 1})
-    async def test_pausing_and_resuming_all_local_queues(self, oban_instance):
+    async def test_pausing_and_resuming_all_queues_with_node(self, oban_instance):
         oban_1 = oban_instance(node="node.1")
         oban_2 = oban_instance(node="node.2")
 
@@ -354,7 +354,7 @@ class TestPauseAndResumeAllQueues:
         await oban_2.start()
 
         try:
-            await oban_1.pause_all_queues(local=True)
+            await oban_1.pause_all_queues(node="node.1")
 
             assert oban_1.check_queue("alpha").paused
             assert oban_1.check_queue("gamma").paused
@@ -362,8 +362,8 @@ class TestPauseAndResumeAllQueues:
             assert not oban_2.check_queue("alpha").paused
             assert not oban_2.check_queue("gamma").paused
 
-            await oban_2.pause_all_queues(local=True)
-            await oban_1.resume_all_queues(local=True)
+            await oban_2.pause_all_queues(node="node.2")
+            await oban_1.resume_all_queues(node="node.1")
 
             assert not oban_1.check_queue("alpha").paused
             assert not oban_1.check_queue("gamma").paused
@@ -373,3 +373,65 @@ class TestPauseAndResumeAllQueues:
         finally:
             await oban_1.stop()
             await oban_2.stop()
+
+
+class TestStartQueue:
+    async def test_starting_queue_dynamically(self, oban_instance):
+        async with oban_instance() as oban:
+            await oban.start_queue(queue="priority", limit=5)
+
+            state = oban.check_queue("priority")
+            assert state is not None
+            assert state.queue == "priority"
+            assert state.limit == 5
+            assert state.paused is False
+
+    async def test_starting_queue_in_paused_state(self, oban_instance):
+        async with oban_instance() as oban:
+            await oban.start_queue(queue="media", limit=3, paused=True)
+
+            state = oban.check_queue("media")
+            assert state.paused is True
+
+    async def test_starting_queue_with_node(self, oban_instance):
+        oban_1 = oban_instance(node="node.1")
+        oban_2 = oban_instance(node="node.2")
+
+        await oban_1.start()
+        await oban_2.start()
+
+        try:
+            await asyncio.sleep(0.1)
+
+            await oban_1.start_queue(queue="priority", limit=10, node="node.2")
+
+            await with_backoff(lambda: oban_1.check_queue("priority") is None)
+            await with_backoff(lambda: oban_2.check_queue("priority") is not None)
+
+            await oban_2.start_queue(queue="priority", limit=10, node="node.1")
+
+            await with_backoff(lambda: oban_1.check_queue("priority") is not None)
+        finally:
+            await oban_1.stop()
+            await oban_2.stop()
+
+    async def test_starting_queue_across_all_nodes(self, oban_instance):
+        oban_1 = oban_instance(node="node.1")
+        oban_2 = oban_instance(node="node.2")
+
+        await oban_1.start()
+        await oban_2.start()
+
+        try:
+            await oban_1.start_queue(queue="priority", limit=10)
+
+            await with_backoff(lambda: oban_1.check_queue("priority") is not None)
+            await with_backoff(lambda: oban_2.check_queue("priority") is not None)
+        finally:
+            await oban_1.stop()
+            await oban_2.stop()
+
+    async def test_starting_queue_with_invalid_limit(self, oban_instance):
+        async with oban_instance() as oban:
+            with pytest.raises(ValueError, match="limit must be positive"):
+                await oban.start_queue(queue="bad", limit=0)

@@ -66,10 +66,6 @@ class Oban:
         if leadership is None:
             leadership = bool(queues)
 
-        for queue, limit in queues.items():
-            if limit < 1:
-                raise ValueError(f"Queue '{queue}' limit must be positive")
-
         self._name = name
         self._node = node or socket.gethostname()
         self._query = Query(conn, prefix)
@@ -120,6 +116,8 @@ class Oban:
             query=self._query,
             **scheduler,
         )
+
+        self._signal_token = None
 
         _instances[name] = self
 
@@ -178,17 +176,23 @@ class Oban:
 
         await asyncio.gather(*tasks)
 
+        self._signal_token = await self._notifier.listen(
+            "signal", self._on_signal, wait=False
+        )
+
         return self
 
     async def stop(self) -> None:
+        await self._notifier.unlisten(self._signal_token)
+
         tasks = [
-            self._notifier.stop(),
             self._leader.stop(),
             self._stager.stop(),
             self._lifeline.stop(),
             self._pruner.stop(),
             self._refresher.stop(),
             self._scheduler.stop(),
+            self._notifier.stop(),
         ]
 
         for producer in self._producers.values():
@@ -274,166 +278,114 @@ class Oban:
             if asyncio.iscoroutine(result):
                 await result
 
-    async def pause_queue(
-        self, queue: str, *, local: bool = False, node: str | None = None
-    ) -> None:
+    async def pause_queue(self, queue: str, *, node: str | None = None) -> None:
         """Pause a queue, preventing it from executing new jobs.
 
         All running jobs will remain running until they are finished.
 
         Args:
             queue: The name of the queue to pause
-            local: If True, only pause on this node (default: False)
-            node: Specific node name to pause (mutually exclusive with local)
-
-        Raises:
-            ValueError: If both local=True and node are specified
+            node: Specific node name to pause. If not provided, pauses across all nodes.
 
         Example:
             Pause the default queue across all nodes:
 
             >>> await oban.pause_queue("default")
 
-            Pause the default queue only on the local node:
-
-            >>> await oban.pause_queue("default", local=True)
-
             Pause the default queue only on a particular node:
 
             >>> await oban.pause_queue("default", node="worker.1")
         """
-        if local and node:
-            raise ValueError("Cannot specify both local and node")
-
         if not node or node == self._node:
             producer = self._producers.get(queue)
 
             if producer:
                 await producer.pause()
 
-        if not local and node != self._node:
+        if node != self._node:
             ident = self._scope_signal(node)
 
             await self._notifier.notify(
                 "signal", {"action": "pause", "queue": queue, "ident": ident}
             )
 
-    async def resume_queue(
-        self, queue: str, *, local: bool = False, node: str | None = None
-    ) -> None:
+    async def resume_queue(self, queue: str, *, node: str | None = None) -> None:
         """Resume a paused queue, allowing it to execute jobs again.
 
         Args:
             queue: The name of the queue to resume
-            local: If True, only resume on this node (default: False)
-            node: Specific node name to resume (mutually exclusive with local)
-
-        Raises:
-            ValueError: If both local=True and node are specified
+            node: Specific node name to resume. If not provided, resumes across all nodes.
 
         Example:
             Resume the default queue across all nodes:
 
             >>> await oban.resume_queue("default")
 
-            Resume the default queue only on the local node:
-
-            >>> await oban.resume_queue("default", local=True)
-
             Resume the default queue only on a particular node:
 
             >>> await oban.resume_queue("default", node="worker.1")
         """
-        if local and node:
-            raise ValueError("Cannot specify both local and node")
-
         if not node or node == self._node:
             producer = self._producers.get(queue)
 
             if producer:
                 await producer.resume()
 
-        if not local and node != self._node:
+        if node != self._node:
             ident = self._scope_signal(node)
 
             await self._notifier.notify(
                 "signal", {"action": "resume", "queue": queue, "ident": ident}
             )
 
-    async def pause_all_queues(
-        self, *, local: bool = False, node: str | None = None
-    ) -> None:
+    async def pause_all_queues(self, *, node: str | None = None) -> None:
         """Pause all queues, preventing them from executing new jobs.
 
         All running jobs will remain running until they are finished.
 
         Args:
-            local: If True, only pause on this node (default: False)
-            node: Specific node name to pause (mutually exclusive with local)
-
-        Raises:
-            ValueError: If both local=True and node are specified
+            node: Specific node name to pause. If not provided, pauses across all nodes.
 
         Example:
             Pause all queues across all nodes:
 
             >>> await oban.pause_all_queues()
 
-            Pause all queues only on the local node:
-
-            >>> await oban.pause_all_queues(local=True)
-
             Pause all queues only on a particular node:
 
             >>> await oban.pause_all_queues(node="worker.1")
         """
-        if local and node:
-            raise ValueError("Cannot specify both local and node")
-
         if not node or node == self._node:
             for producer in self._producers.values():
                 await producer.pause()
 
-        if not local and node != self._node:
+        if node != self._node:
             ident = self._scope_signal(node)
 
             await self._notifier.notify(
                 "signal", {"action": "pause", "queue": "*", "ident": ident}
             )
 
-    async def resume_all_queues(
-        self, *, local: bool = False, node: str | None = None
-    ) -> None:
+    async def resume_all_queues(self, *, node: str | None = None) -> None:
         """Resume all paused queues, allowing them to execute jobs again.
 
         Args:
-            local: If True, only resume on this node (default: False)
-            node: Specific node name to resume (mutually exclusive with local)
-
-        Raises:
-            ValueError: If both local=True and node are specified
+            node: Specific node name to resume. If not provided, resumes across all nodes.
 
         Example:
             Resume all queues across all nodes:
 
             >>> await oban.resume_all_queues()
 
-            Resume all queues only on the local node:
-
-            >>> await oban.resume_all_queues(local=True)
-
             Resume all queues only on a particular node:
 
             >>> await oban.resume_all_queues(node="worker.1")
         """
-        if local and node:
-            raise ValueError("Cannot specify both local and node")
-
         if not node or node == self._node:
             for producer in self._producers.values():
                 await producer.resume()
 
-        if not local and node != self._node:
+        if node != self._node:
             ident = self._scope_signal(node)
 
             await self._notifier.notify(
@@ -486,11 +438,81 @@ class Oban:
         """
         return [producer.check() for producer in self._producers.values()]
 
+    async def start_queue(
+        self, *, queue: str, limit: int, paused: bool = False, node: str | None = None
+    ) -> None:
+        """Start a new supervised queue.
+
+        By default, this starts a new supervised queue across all nodes running Oban on the
+        same database and prefix.
+
+        Args:
+            queue: The name of the queue to start
+            limit: The concurrency limit for the queue
+            paused: Whether the queue starts in a paused state (default: False)
+            node: Specific node name to start the queue on. If not provided, starts across all nodes.
+
+        Example:
+            Start the priority queue with a concurrency limit of 10 across all nodes:
+
+            >>> await oban.start_queue(queue="priority", limit=10)
+
+            Start the media queue on a particular node:
+
+            >>> await oban.start_queue(queue="media", limit=5, node="worker.1")
+
+            Start the media queue in a paused state:
+
+            >>> await oban.start_queue(queue="media", limit=5, paused=True)
+        """
+        if not node or node == self._node:
+            await self._start_queue_local(queue=queue, limit=limit, paused=paused)
+        else:
+            ident = self._scope_signal(node)
+
+            await self._notifier.notify(
+                "signal",
+                {
+                    "action": "start",
+                    "queue": queue,
+                    "limit": limit,
+                    "paused": paused,
+                    "ident": ident,
+                },
+            )
+
     def _scope_signal(self, node: str | None) -> str:
         if node is not None:
             return f"{self._name}.{node}"
         else:
             return "any"
+
+    async def _on_signal(self, _channel: str, payload: dict) -> None:
+        ident = payload.pop("ident")
+
+        if ident != "any" and ident != f"{self._name}.{self._node}":
+            return
+
+        if payload.pop("action") == "start":
+            await self._start_queue_local(**payload)
+
+    async def _start_queue_local(self, **params) -> None:
+        queue = params["queue"]
+
+        if queue in self._producers:
+            return
+
+        producer = Producer(
+            query=self._query,
+            name=self._name,
+            node=self._node,
+            notifier=self._notifier,
+            **params,
+        )
+
+        self._producers[queue] = producer
+
+        await producer.start()
 
 
 def get_instance(name: str = "oban") -> Oban:
