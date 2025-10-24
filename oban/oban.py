@@ -6,6 +6,7 @@ import socket
 from typing import Any
 
 from .job import Job
+from .types import QueueState
 from ._leader import Leader
 from ._lifeline import Lifeline
 from ._notifier import Notifier, PostgresNotifier
@@ -195,6 +196,15 @@ class Oban:
 
         await asyncio.gather(*tasks)
 
+    async def _verify_structure(self) -> None:
+        existing = await self._query.verify_structure()
+
+        for table in ["oban_jobs", "oban_leaders", "oban_producers"]:
+            if table not in existing:
+                raise RuntimeError(
+                    f"The '{table}' is missing, run schema installation first."
+                )
+
     async def enqueue(self, job: Job) -> Job:
         """Insert a job into the database for processing.
 
@@ -295,11 +305,18 @@ class Oban:
         if local and node:
             raise ValueError("Cannot specify both local and node")
 
-        ident = self._scope_signal(local, node)
+        if not node or node == self._node:
+            producer = self._producers.get(queue)
 
-        await self._notifier.notify(
-            "signal", {"action": "pause", "queue": queue, "ident": ident}
-        )
+            if producer:
+                await producer.pause()
+
+        if not local and node != self._node:
+            ident = self._scope_signal(node)
+
+            await self._notifier.notify(
+                "signal", {"action": "pause", "queue": queue, "ident": ident}
+            )
 
     async def resume_queue(
         self, queue: str, *, local: bool = False, node: str | None = None
@@ -330,28 +347,54 @@ class Oban:
         if local and node:
             raise ValueError("Cannot specify both local and node")
 
-        ident = self._scope_signal(local, node)
+        if not node or node == self._node:
+            producer = self._producers.get(queue)
 
-        await self._notifier.notify(
-            "signal", {"action": "resume", "queue": queue, "ident": ident}
-        )
+            if producer:
+                await producer.resume()
 
-    def _scope_signal(self, local: bool, node: str | None) -> str:
-        if local:
-            return f"{self._name}.{self._node}"
-        elif node is not None:
+        if not local and node != self._node:
+            ident = self._scope_signal(node)
+
+            await self._notifier.notify(
+                "signal", {"action": "resume", "queue": queue, "ident": ident}
+            )
+
+    def check_queue(self, queue: str) -> QueueState | None:
+        """Check the current state of a queue.
+
+        This allows you to introspect on a queue's health by retrieving key attributes
+        of the producer's state, such as the current limit, running job IDs, and when
+        the producer was started.
+
+        Args:
+            queue: The name of the queue to check
+
+        Returns:
+            A QueueState instance with the producer's state, or None if the queue
+            isn't running on this node.
+
+        Example:
+            Get details about the default queue:
+
+            >>> state = oban.check_queue("default")
+            ... print(f"Queue {state.queue} has {len(state.running)} jobs running")
+
+            Attempt to check a queue that isn't running locally:
+
+            >>> state = oban.check_queue("not_running")
+            >>> print(state)  # None
+        """
+        producer = self._producers.get(queue)
+
+        if producer:
+            return producer.check()
+
+    def _scope_signal(self, node: str | None) -> str:
+        if node is not None:
             return f"{self._name}.{node}"
         else:
             return "any"
-
-    async def _verify_structure(self) -> None:
-        existing = await self._query.verify_structure()
-
-        for table in ["oban_jobs", "oban_leaders", "oban_producers"]:
-            if table not in existing:
-                raise RuntimeError(
-                    f"The '{table}' is missing, run schema installation first."
-                )
 
 
 def get_instance(name: str = "oban") -> Oban:

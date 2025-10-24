@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from datetime import datetime
 from enum import StrEnum
 from typing import TypeVar
 
@@ -36,6 +37,27 @@ class Snooze:
 @dataclass(frozen=True, slots=True)
 class Cancel:
     reason: str
+
+
+@dataclass(frozen=True, slots=True)
+class QueueState:
+    """Represents the runtime state of a queue.
+
+    Attributes:
+        limit: The concurrency limit for this queue
+        node: The node name where this queue is running
+        paused: Whether the queue is currently paused
+        queue: The queue name
+        running: List of currently executing job IDs
+        started_at: When the queue was started
+    """
+
+    limit: int
+    node: str
+    paused: bool
+    queue: str
+    running: list[int]
+    started_at: datetime
 
 
 type Result[T] = Snooze | Cancel | None

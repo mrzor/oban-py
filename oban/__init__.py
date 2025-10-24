@@ -1,7 +1,7 @@
 from .decorators import job, worker
 from .job import Job
 from .oban import Oban
-from .types import JobState, Result, Snooze, Cancel
+from .types import JobState, QueueState, Result, Snooze, Cancel
 
 __all__ = [
     "job",
@@ -9,6 +9,7 @@ __all__ = [
     "Job",
     "Oban",
     "JobState",
+    "QueueState",
     "Result",
     "Snooze",
     "Cancel",

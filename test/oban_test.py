@@ -216,54 +216,40 @@ class TestIntegration:
 
 
 class TestPauseAndResumeQueue:
-    def teardown_method(self):
-        Worker.processed.clear()
-
-    def assert_processed(self, ref):
-        assert ref in Worker.processed
-
-    def assert_not_processed(self, ref):
-        assert ref not in Worker.processed
-
     @pytest.mark.oban(queues={"default": 2})
     async def test_paused_queue_does_not_execute_new_jobs(self, oban_instance):
+        executed = asyncio.Event()
+
+        @worker()
+        class Pausable:
+            async def process(self, _job):
+                executed.set()
+
         async with oban_instance() as oban:
-            await Worker.enqueue({"act": "ok", "ref": 1})
+            await oban.pause_queue("default", local=True)
 
-            await oban.pause_queue("default")
-
-            await asyncio.sleep(0.1)
-
-            await Worker.enqueue({"act": "ok", "ref": 2})
-            await Worker.enqueue({"act": "ok", "ref": 3})
+            await Pausable.enqueue()
 
             await asyncio.sleep(0.1)
+            assert not executed.is_set()
 
-            self.assert_processed(1)
-            self.assert_not_processed(2)
-            self.assert_not_processed(3)
+            await oban.resume_queue("default", local=True)
 
-            await oban.resume_queue("default")
-
-            await asyncio.sleep(0.1)
-
-            self.assert_processed(2)
-            self.assert_processed(3)
+            await executed.wait()
 
     @pytest.mark.oban(queues={"alpha": 1, "gamma": 1})
     async def test_pause_queue_only_affects_specified_queue(self, oban_instance):
         async with oban_instance() as oban:
             await oban.pause_queue("alpha")
+
+            # Required to prevent the pause broadcast from overwriting the resume
             await asyncio.sleep(0.1)
 
-            # TODO: This is entirely invasive. Switch to `check_queue()` when available
-            assert oban._producers["alpha"]._paused
-            assert not oban._producers["gamma"]._paused
+            assert oban.check_queue("alpha").paused
+            assert not oban.check_queue("gamma").paused
 
             await oban.resume_queue("alpha")
-            await asyncio.sleep(0.1)
-
-            assert not oban._producers["alpha"]._paused
+            assert not oban.check_queue("alpha").paused
 
     @pytest.mark.oban(queues={"default": 2})
     async def test_pause_queue_with_local(self, oban_instance):
@@ -275,15 +261,49 @@ class TestPauseAndResumeQueue:
 
         try:
             await oban_1.pause_queue("default", local=True)
-            await asyncio.sleep(0.1)
 
-            assert oban_1._producers["default"]._paused
-            assert not oban_2._producers["default"]._paused
+            assert oban_1.check_queue("default").paused
+            assert not oban_2.check_queue("default").paused
 
             await oban_1.resume_queue("default", local=True)
-            await asyncio.sleep(0.1)
 
-            assert not oban_1._producers["default"]._paused
+            assert not oban_1.check_queue("default").paused
         finally:
             await oban_1.stop()
             await oban_2.stop()
+
+
+class TestCheckQueue:
+    @pytest.mark.oban(queues={"alpha": 1, "gamma": 2})
+    async def test_checking_queue_state_at_runtime(self, oban_instance):
+        started = asyncio.Event()
+
+        @worker(queue="alpha")
+        class Sleepy:
+            async def process(self, _job):
+                started.set() 
+                await asyncio.sleep(0.1)
+
+        async with oban_instance() as oban:
+            job = await Sleepy.enqueue()
+
+            await started.wait()
+
+            alpha_state = oban.check_queue("alpha")
+
+            assert alpha_state is not None
+            assert alpha_state.limit == 1
+            assert alpha_state.node is not None
+            assert alpha_state.paused is False
+            assert alpha_state.queue == "alpha"
+            assert alpha_state.running == [job.id]
+            assert isinstance(alpha_state.started_at, datetime)
+
+            gamma_state = oban.check_queue("gamma")
+            assert gamma_state.limit == 2
+            assert gamma_state.queue == "gamma"
+            assert gamma_state.running == []
+
+    async def test_checking_state_for_inactive_queue(self, oban_instance):
+        async with oban_instance() as oban:
+            assert oban.check_queue("default") is None

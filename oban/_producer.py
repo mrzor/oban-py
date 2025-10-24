@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import asyncio
 
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
 from ._executor import Executor
 from .job import Job
+from .types import QueueState
 
 if TYPE_CHECKING:
     from ._notifier import Notifier
@@ -39,10 +41,13 @@ class Producer:
         self._loop_task = None
         self._notified = asyncio.Event()
         self._paused = False
-        self._running_jobs = set()
+        self._running_jobs = {}
+        self._started_at = None
         self._uuid = str(uuid4())
 
     async def start(self) -> None:
+        self._started_at = datetime.now(timezone.utc)
+
         await self._query.insert_producer(
             uuid=self._uuid,
             name=self._name,
@@ -66,7 +71,7 @@ class Producer:
         self._loop_task.cancel()
 
         await asyncio.gather(
-            self._loop_task, *self._running_jobs, return_exceptions=True
+            self._loop_task, *self._running_jobs.values(), return_exceptions=True
         )
 
         await self._query.delete_producer(self._uuid)
@@ -82,9 +87,19 @@ class Producer:
     async def resume(self) -> None:
         self._paused = False
 
-        await self._query.update_producer(uuid=self._uuid, meta={"paused": False})
+        # await self._query.update_producer(uuid=self._uuid, meta={"paused": False})
 
-        self.notify()
+        # self.notify()
+
+    def check(self) -> QueueState:
+        return QueueState(
+            limit=self._limit,
+            node=self._node,
+            paused=self._paused,
+            queue=self._queue,
+            running=list(self._running_jobs.keys()),
+            started_at=self._started_at,
+        )
 
     async def _loop(self) -> None:
         while True:
@@ -114,9 +129,9 @@ class Producer:
 
                 for job in jobs:
                     task = asyncio.create_task(self._execute(job))
-                    task.add_done_callback(self._on_job_complete)
+                    task.add_done_callback(lambda _, job_id=job.id: self._on_job_complete(job_id))
 
-                    self._running_jobs.add(task)
+                    self._running_jobs[job.id] = task
 
             except asyncio.CancelledError:
                 break
@@ -129,8 +144,8 @@ class Producer:
         if elapsed < self._debounce_interval:
             await asyncio.sleep(self._debounce_interval - elapsed)
 
-    def _on_job_complete(self, task: asyncio.Task) -> None:
-        self._running_jobs.discard(task)
+    def _on_job_complete(self, job_id: int) -> None:
+        self._running_jobs.pop(job_id, None)
 
         self.notify()
 
@@ -151,7 +166,6 @@ class Producer:
         if payload.get("queue") != self._queue:
             return
 
-        # TODO: Encode the `ident` format somewhere else
         if ident != "any" and ident != f"{self._name}.{self._node}":
             return
 
