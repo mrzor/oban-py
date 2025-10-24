@@ -48,7 +48,7 @@ class Producer:
             name=self._name,
             node=self._node,
             queue=self._queue,
-            meta={"local_limit": self._limit},
+            meta={"local_limit": self._limit, "paused": self._paused},
         )
 
         self._listen_token = await self._notifier.listen(
@@ -78,6 +78,13 @@ class Producer:
         self._paused = True
 
         await self._query.update_producer(uuid=self._uuid, meta={"paused": True})
+
+    async def resume(self) -> None:
+        self._paused = False
+
+        await self._query.update_producer(uuid=self._uuid, meta={"paused": False})
+
+        self.notify()
 
     async def _loop(self) -> None:
         while True:
@@ -148,6 +155,8 @@ class Producer:
         if ident != "any" and ident != f"{self._name}.{self._node}":
             return
 
-        # TODO: Switch to match when there are other actions
-        if payload.get("action") == "pause":
-            await self.pause()
+        match payload.get("action"):
+            case "pause":
+                await self.pause()
+            case "resume":
+                await self.resume()

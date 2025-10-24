@@ -293,12 +293,47 @@ class Oban:
             >>> await oban.pause_queue("default", node="worker.1")
         """
         if local and node:
-            raise ValueError("Cannot specify both local=True and node")
+            raise ValueError("Cannot specify both local and node")
 
         ident = self._scope_signal(local, node)
 
         await self._notifier.notify(
             "signal", {"action": "pause", "queue": queue, "ident": ident}
+        )
+
+    async def resume_queue(
+        self, queue: str, *, local: bool = False, node: str | None = None
+    ) -> None:
+        """Resume a paused queue, allowing it to execute jobs again.
+
+        Args:
+            queue: The name of the queue to resume
+            local: If True, only resume on this node (default: False)
+            node: Specific node name to resume (mutually exclusive with local)
+
+        Raises:
+            ValueError: If both local=True and node are specified
+
+        Example:
+            Resume the default queue across all nodes:
+
+            >>> await oban.resume_queue("default")
+
+            Resume the default queue only on the local node:
+
+            >>> await oban.resume_queue("default", local=True)
+
+            Resume the default queue only on a particular node:
+
+            >>> await oban.resume_queue("default", node="worker.1")
+        """
+        if local and node:
+            raise ValueError("Cannot specify both local and node")
+
+        ident = self._scope_signal(local, node)
+
+        await self._notifier.notify(
+            "signal", {"action": "resume", "queue": queue, "ident": ident}
         )
 
     def _scope_signal(self, local: bool, node: str | None) -> str:
