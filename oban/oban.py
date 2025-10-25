@@ -378,7 +378,13 @@ class Oban:
 
         For `executing` jobs, the database state is updated immediately, but the
         running task is not forcefully terminated. Workers should check for cancellation
-        and stop gracefully.
+        at safe points and stop gracefully by calling `job.cancelled()`:
+
+        >>> async def process(self, job):
+        ...     for item in dataset:
+        ...         if job.cancelled():
+        ...             return Cancel("Job was cancelled")
+        ...         await process_item(item)
 
         Args:
             job: A Job instance or job ID to cancel
@@ -404,7 +410,13 @@ class Oban:
 
         For `executing` jobs, the database state is updated immediately, but
         running tasks are not forcefully terminated. Workers should check for cancellation
-        and stop gracefully.
+        at safe points and stop gracefully by calling `job.cancelled()`:
+
+        >>> async def process(self, job):
+        ...     for item in dataset:
+        ...         if job.cancelled():
+        ...             return Cancel("Job was cancelled")
+        ...         await process_item(item)
 
         Args:
             jobs: List of Job instances or job IDs to cancel
