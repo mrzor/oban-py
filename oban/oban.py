@@ -278,6 +278,53 @@ class Oban:
             if asyncio.iscoroutine(result):
                 await result
 
+    async def retry_job(self, job: Job | int) -> None:
+        """Retry a job by setting it as available for execution.
+
+        Jobs currently `available` or `executing` are ignored. The job is scheduled
+        for immediate execution, with `max_attempts` increased if already maxed out.
+
+        Args:
+            job: A Job instance or job ID to retry
+
+        Example:
+            Retry a job by ID:
+
+            >>> await oban.retry_job(123)
+
+            Retry a job instance:
+
+            >>> await oban.retry_job(job)
+        """
+        job_id = job.id if isinstance(job, Job) else job
+
+        await self.retry_all_jobs([job_id])
+
+    async def retry_all_jobs(self, jobs: list[Job | int]) -> int:
+        """Retry multiple jobs by setting them as available for execution.
+
+        Jobs currently `available` or `executing` are ignored. Jobs are scheduled
+        for immediate execution, with max_attempts increased if already maxed out.
+
+        Args:
+            jobs: List of Job instances or job IDs to retry
+
+        Returns:
+            The number of jobs updated
+
+        Example:
+            Retry multiple jobs by ID:
+
+            >>> count = await oban.retry_all_jobs([123, 456, 789])
+
+            Retry multiple job instances:
+
+            >>> count = await oban.retry_all_jobs([job_1, job_2, job_3])
+        """
+        job_ids = [job.id if isinstance(job, Job) else job for job in jobs]
+
+        return await self._query.retry_all_jobs(job_ids)
+
     async def pause_queue(self, queue: str, *, node: str | None = None) -> None:
         """Pause a queue, preventing it from executing new jobs.
 

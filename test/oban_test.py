@@ -6,6 +6,16 @@ from .helpers import with_backoff
 from oban import Cancel, Snooze, worker
 
 
+async def get_job(oban, job_id):
+    return await oban._query.get_job(job_id)
+
+
+async def assert_state(oban, job_id, expected_state):
+    job = await get_job(oban, job_id)
+
+    assert job is not None and job.state == expected_state
+
+
 @worker()
 class Worker:
     processed = set()
@@ -70,14 +80,6 @@ class TestIntegration:
     def assert_processed(self, ref):
         assert ref in Worker.processed
 
-    async def get_job(self, oban, job_id):
-        return await oban._query.get_job(job_id)
-
-    async def assert_state(self, oban, job_id, expected_state):
-        job = await self.get_job(oban, job_id)
-
-        assert job is not None and job.state == expected_state
-
     @pytest.mark.oban(queues={"default": 2})
     async def test_inserting_and_executing_jobs(self, oban_instance):
         async with oban_instance() as oban:
@@ -93,11 +95,11 @@ class TestIntegration:
             await with_backoff(lambda: self.assert_processed(4))
             await with_backoff(lambda: self.assert_processed(5))
 
-            await with_backoff(lambda: self.assert_state(oban, job_1.id, "completed"))
-            await with_backoff(lambda: self.assert_state(oban, job_2.id, "retryable"))
-            await with_backoff(lambda: self.assert_state(oban, job_3.id, "cancelled"))
-            await with_backoff(lambda: self.assert_state(oban, job_4.id, "scheduled"))
-            await with_backoff(lambda: self.assert_state(oban, job_5.id, "discarded"))
+            await with_backoff(lambda: assert_state(oban, job_1.id, "completed"))
+            await with_backoff(lambda: assert_state(oban, job_2.id, "retryable"))
+            await with_backoff(lambda: assert_state(oban, job_3.id, "cancelled"))
+            await with_backoff(lambda: assert_state(oban, job_4.id, "scheduled"))
+            await with_backoff(lambda: assert_state(oban, job_5.id, "discarded"))
 
     @pytest.mark.oban(queues={"alpha": 1, "gamma": 1})
     async def test_limiting_concurrent_execution(self, oban_instance):
@@ -116,8 +118,8 @@ class TestIntegration:
             await with_backoff(lambda: self.assert_processed(1))
             await with_backoff(lambda: self.assert_processed(3))
 
-            await self.assert_state(oban, job_2.id, "available")
-            await self.assert_state(oban, job_4.id, "available")
+            await assert_state(oban, job_2.id, "available")
+            await assert_state(oban, job_4.id, "available")
         finally:
             await oban.stop()
 
@@ -133,18 +135,18 @@ class TestIntegration:
             job_2 = await Worker.enqueue({"ref": 2}, scheduled_at=next_time)
 
             await with_backoff(lambda: self.assert_processed(1))
-            await with_backoff(lambda: self.assert_state(oban, job_1.id, "completed"))
+            await with_backoff(lambda: assert_state(oban, job_1.id, "completed"))
 
-            await self.assert_state(oban, job_2.id, "scheduled")
+            await assert_state(oban, job_2.id, "scheduled")
 
     @pytest.mark.oban(queues={"default": 2})
     async def test_completed_jobs_have_completed_at_timestamp(self, oban_instance):
         async with oban_instance() as oban:
             job = await Worker.enqueue({"act": "ok", "ref": 1})
 
-            await with_backoff(lambda: self.assert_state(oban, job.id, "completed"))
+            await with_backoff(lambda: assert_state(oban, job.id, "completed"))
 
-            job = await self.get_job(oban, job.id)
+            job = await get_job(oban, job.id)
 
             assert job.completed_at is not None
 
@@ -153,9 +155,9 @@ class TestIntegration:
         async with oban_instance() as oban:
             job = await Worker.enqueue({"act": "ca", "ref": 1})
 
-            await with_backoff(lambda: self.assert_state(oban, job.id, "cancelled"))
+            await with_backoff(lambda: assert_state(oban, job.id, "cancelled"))
 
-            job = await self.get_job(oban, job.id)
+            job = await get_job(oban, job.id)
 
             assert job.cancelled_at is not None
 
@@ -165,9 +167,9 @@ class TestIntegration:
             job = await Worker.enqueue({"act": "sn", "ref": 1})
             now = datetime.now(timezone.utc)
 
-            await with_backoff(lambda: self.assert_state(oban, job.id, "scheduled"))
+            await with_backoff(lambda: assert_state(oban, job.id, "scheduled"))
 
-            job = await self.get_job(oban, job.id)
+            job = await get_job(oban, job.id)
 
             assert job.scheduled_at > now
             assert (job.scheduled_at - now).total_seconds() >= 1
@@ -178,9 +180,9 @@ class TestIntegration:
             job = await Worker.enqueue({"act": "er", "ref": 1})
             now = datetime.now(timezone.utc)
 
-            await with_backoff(lambda: self.assert_state(oban, job.id, "retryable"))
+            await with_backoff(lambda: assert_state(oban, job.id, "retryable"))
 
-            job = await self.get_job(oban, job.id)
+            job = await get_job(oban, job.id)
 
             assert job.scheduled_at > now
 
@@ -194,9 +196,9 @@ class TestIntegration:
         async with oban_instance() as oban:
             job = await Worker.enqueue({"act": "er", "ref": 1}, max_attempts=1)
 
-            await with_backoff(lambda: self.assert_state(oban, job.id, "discarded"))
+            await with_backoff(lambda: assert_state(oban, job.id, "discarded"))
 
-            job = await self.get_job(oban, job.id)
+            job = await get_job(oban, job.id)
 
             assert job.discarded_at is not None
             assert len(job.errors) > 0
@@ -493,6 +495,38 @@ class TestStopQueue:
         finally:
             await oban_1.stop()
             await oban_2.stop()
+
+
+class TestRetryJob:
+    @pytest.mark.oban(queues={"default": 1})
+    async def test_retrying_a_job(self, oban_instance):
+        async with oban_instance() as oban:
+            job = await Worker.enqueue({"act": "er", "ref": 1}, max_attempts=1)
+
+            await with_backoff(lambda: assert_state(oban, job.id, "discarded"))
+
+            await oban.retry_job(job.id)
+
+            await with_backoff(lambda: assert_state(oban, job.id, "available"))
+
+
+class TestRetryAllJobs:
+    @pytest.mark.oban(queues={"default": 3})
+    async def test_retrying_multiple_jobs(self, oban_instance):
+        async with oban_instance() as oban:
+            job_1 = await Worker.enqueue({"act": "er", "ref": 1}, max_attempts=1)
+            job_2 = await Worker.enqueue({"act": "ca", "ref": 2}, max_attempts=1)
+            job_3 = await Worker.enqueue({"act": "ok", "ref": 3}, max_attempts=1)
+
+            await with_backoff(lambda: assert_state(oban, job_1.id, "discarded"))
+            await with_backoff(lambda: assert_state(oban, job_2.id, "cancelled"))
+            await with_backoff(lambda: assert_state(oban, job_3.id, "completed"))
+
+            assert await oban.retry_all_jobs([job_1.id, job_2, job_3]) == 3
+
+            await with_backoff(lambda: assert_state(oban, job_1.id, "available"))
+            await with_backoff(lambda: assert_state(oban, job_2.id, "available"))
+            await with_backoff(lambda: assert_state(oban, job_3.id, "available"))
 
 
 class TestScaleQueue:
