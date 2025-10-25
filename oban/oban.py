@@ -325,6 +325,51 @@ class Oban:
 
         return await self._query.retry_all_jobs(job_ids)
 
+    async def delete_job(self, job: Job | int) -> None:
+        """Delete a job from the database.
+
+        Jobs in the `executing` state cannot be deleted and are ignored.
+
+        Args:
+            job: A Job instance or job ID to delete
+
+        Example:
+            Delete a job by ID:
+
+            >>> await oban.delete_job(123)
+
+            Delete a job instance:
+
+            >>> await oban.delete_job(job)
+        """
+        job_id = job.id if isinstance(job, Job) else job
+
+        await self.delete_all_jobs([job_id])
+
+    async def delete_all_jobs(self, jobs: list[Job | int]) -> int:
+        """Delete multiple jobs from the database.
+
+        Jobs in the `executing` state cannot be deleted and are ignored.
+
+        Args:
+            jobs: List of Job instances or job IDs to delete
+
+        Returns:
+            The number of jobs deleted
+
+        Example:
+            Delete multiple jobs by ID:
+
+            >>> count = await oban.delete_all_jobs([123, 456, 789])
+
+            Delete multiple job instances:
+
+            >>> count = await oban.delete_all_jobs([job_1, job_2, job_3])
+        """
+        job_ids = [job.id if isinstance(job, Job) else job for job in jobs]
+
+        return await self._query.delete_all_jobs(job_ids)
+
     async def pause_queue(self, queue: str, *, node: str | None = None) -> None:
         """Pause a queue, preventing it from executing new jobs.
 

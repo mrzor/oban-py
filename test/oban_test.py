@@ -509,6 +509,10 @@ class TestRetryJob:
 
             await with_backoff(lambda: assert_state(oban, job.id, "available"))
 
+    async def test_retrying_a_nonexistent_job(self, oban_instance):
+        async with oban_instance() as oban:
+            await oban.retry_job(99999)
+
 
 class TestRetryAllJobs:
     @pytest.mark.oban(queues={"default": 3})
@@ -527,6 +531,41 @@ class TestRetryAllJobs:
             await with_backoff(lambda: assert_state(oban, job_1.id, "available"))
             await with_backoff(lambda: assert_state(oban, job_2.id, "available"))
             await with_backoff(lambda: assert_state(oban, job_3.id, "available"))
+
+
+class TestDeleteJob:
+    async def test_deleting_a_job_by_id(self, oban_instance):
+        async with oban_instance() as oban:
+            job = await Worker.enqueue({"ref": 1})
+
+            await oban.delete_job(job.id)
+
+            assert await get_job(oban, job.id) is None
+
+    async def test_deleting_a_job_by_instance(self, oban_instance):
+        async with oban_instance() as oban:
+            job = await Worker.enqueue({"ref": 1})
+
+            await oban.delete_job(job)
+
+            assert await get_job(oban, job.id) is None
+
+    async def test_deleting_nonexistent_job(self, oban_instance):
+        async with oban_instance() as oban:
+            await oban.delete_job(99999)
+
+
+class TestDeleteAllJobs:
+    @pytest.mark.oban()
+    async def test_deleting_multiple_jobs(self, oban_instance):
+        async with oban_instance() as oban:
+            job_1 = await Worker.enqueue({"act": "ok", "ref": 1})
+            job_2 = await Worker.enqueue({"act": "ok", "ref": 2})
+
+            assert await oban.delete_all_jobs([job_1.id, job_2]) == 2
+
+            assert await get_job(oban, job_1.id) is None
+            assert await get_job(oban, job_2.id) is None
 
 
 class TestScaleQueue:
