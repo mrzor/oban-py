@@ -58,6 +58,13 @@ def worker(*, oban: str = "oban", cron: str | dict | None = None, **overrides):
         ... )
         >>> print(job.priority)  # 5
         >>>
+        >>> # Schedule a job to run in 5 minutes using a timedelta
+        >>> from datetime import timedelta
+        >>> job = EmailWorker.enqueue(..., schedule_in=timedelta(minutes=5))
+        >>>
+        >>> # Schedule a job to run in 60 seconds
+        >>> job = EmailWorker.enqueue(...,schedule_in=60)
+        >>>
         >>> # Periodic worker that runs daily at midnight
         >>> @worker(queue="cleanup", cron="@daily")
         ... class DailyCleanup:

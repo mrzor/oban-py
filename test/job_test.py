@@ -1,4 +1,5 @@
 import pytest
+from datetime import datetime, timedelta, timezone
 
 from oban.job import Job
 
@@ -58,3 +59,39 @@ class TestJobNormalization:
     def test_tags_are_converted_to_strings(self):
         job = Job.new(worker="test.Worker", tags=[None, 1, 2])
         assert job.tags == ["1", "2"]
+
+
+class TestScheduleIn:
+    def test_schedule_in_with_timedelta(self):
+        now = datetime.now(timezone.utc)
+        top = now + timedelta(minutes=5, seconds=1)
+        job = Job.new(worker="test.Worker", schedule_in=timedelta(minutes=5))
+
+        assert now < job.scheduled_at < top
+
+    def test_schedule_in_with_seconds_as_int(self):
+        now = datetime.now(timezone.utc)
+        top = now + timedelta(seconds=61)
+        job = Job.new(worker="test.Worker", schedule_in=60)
+
+        assert now < job.scheduled_at < top
+
+    def test_schedule_in_with_seconds_as_float(self):
+        now = datetime.now(timezone.utc)
+        top = now + timedelta(seconds=31)
+        job = Job.new(worker="test.Worker", schedule_in=30.5)
+
+        assert now < job.scheduled_at < top
+
+    def test_schedule_in_overrides_scheduled_at(self):
+        fixed_time = datetime.now(timezone.utc) + timedelta(hours=2)
+        now = datetime.now(timezone.utc)
+        top = now + timedelta(minutes=5, seconds=1)
+
+        job = Job.new(
+            worker="test.Worker",
+            scheduled_at=fixed_time,
+            schedule_in=timedelta(minutes=5),
+        )
+
+        assert now < job.scheduled_at < top

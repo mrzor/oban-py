@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 
 from dataclasses import asdict, dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from .types import JobState
@@ -62,22 +62,61 @@ class Job:
         return f"Job({', '.join(parts)})"
 
     @classmethod
-    def new(cls, **kwargs) -> Job:
+    def new(cls, **params) -> Job:
         """Create a new job with validation and normalization.
 
-        Use this for creating new jobs. Jobs returned from the database
-        are constructed directly and skip validation/normalization.
+        This is a low-level method for manually constructing jobs. In most cases,
+        you should use the `@worker` or `@job` decorators instead, which provide
+        a more convenient API via `Worker.new()` and `Worker.enqueue()`.
+
+        Jobs returned from the database are constructed directly and skip
+        validation/normalization.
 
         Args:
-            **kwargs: Job field values
+            **params: Job field values including:
+                - worker: Required. Fully qualified worker class path
+                - args: Job arguments (default: {})
+                - queue: Queue name (default: "default")
+                - priority: Priority 0-9 (default: 0)
+                - max_attempts: Maximum retry attempts (default: 20)
+                - scheduled_at: When to run the job (default: now)
+                - schedule_in: Alternative to scheduled_at. Timedelta or seconds from now
+                - tags: List of tags for filtering/grouping
+                - meta: Arbitrary metadata dictionary
 
         Returns:
             A validated and normalized Job instance
 
         Example:
-            >>> job = Job.new(worker="myapp.workers.EmailWorker", args={"to": "user@example.com"})
+            Manual job creation (not recommended for typical use):
+
+            >>> job = Job.new(
+            ...     worker="myapp.workers.EmailWorker",
+            ...     args={"to": "user@example.com"},
+            ...     queue="mailers",
+            ...     schedule_in=60  # Run in 60 seconds
+            ... )
+
+            Preferred approach using decorators:
+
+            >>> from oban import worker
+            >>>
+            >>> @worker(queue="mailers")
+            ... class EmailWorker:
+            ...     async def process(self, job):
+            ...         pass
+            >>>
+            >>> job = EmailWorker.new({"to": "user@example.com"}, schedule_in=60)
         """
-        job = cls(**kwargs)
+        if "schedule_in" in params:
+            schedule_in = params.pop("schedule_in")
+
+            if isinstance(schedule_in, (int, float)):
+                schedule_in = timedelta(seconds=schedule_in)
+
+            params["scheduled_at"] = datetime.now(timezone.utc) + schedule_in
+
+        job = cls(**params)
         job._normalize_tags()
         job._validate()
 
