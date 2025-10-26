@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -17,6 +17,16 @@ TIMESTAMP_FIELDS = [
     "discarded_at",
     "scheduled_at",
 ]
+
+
+def _handle_schedule_in(params: dict[str, Any]) -> None:
+    if "schedule_in" in params:
+        schedule_in = params.pop("schedule_in")
+
+        if isinstance(schedule_in, (int, float)):
+            schedule_in = timedelta(seconds=schedule_in)
+
+        params["scheduled_at"] = datetime.now(timezone.utc) + schedule_in
 
 
 @dataclass(slots=True)
@@ -110,15 +120,41 @@ class Job:
             >>>
             >>> job = EmailWorker.new({"to": "user@example.com"}, schedule_in=60)
         """
-        if "schedule_in" in params:
-            schedule_in = params.pop("schedule_in")
-
-            if isinstance(schedule_in, (int, float)):
-                schedule_in = timedelta(seconds=schedule_in)
-
-            params["scheduled_at"] = datetime.now(timezone.utc) + schedule_in
+        _handle_schedule_in(params)
 
         job = cls(**params)
+        job._normalize_tags()
+        job._validate()
+
+        return job
+
+    def update(self, changes: dict[str, Any]) -> Job:
+        """Update this job with the given changes, applying validation and normalization.
+
+        This method creates a new Job instance with the changes applied, then validates
+        and normalizes the result. It's used internally by Oban's update_job methods.
+
+        Args:
+            changes: Dictionary of field changes. Supports:
+                - args: Job arguments
+                - max_attempts: Maximum retry attempts
+                - meta: Arbitrary metadata dictionary
+                - priority: Priority 0-9
+                - queue: Queue name
+                - scheduled_at: When to run the job
+                - schedule_in: Alternative to scheduled_at. Timedelta or seconds from now
+                - tags: List of tags for filtering/grouping
+                - worker: Fully qualified worker class path
+
+        Returns:
+            A new Job instance with changes applied and validated
+
+        Example:
+            >>> job.update({"priority": 0, "tags": ["urgent"]})
+        """
+        _handle_schedule_in(changes)
+
+        job = replace(self, **changes)
         job._normalize_tags()
         job._validate()
 

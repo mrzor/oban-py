@@ -28,6 +28,17 @@ INSERTABLE_FIELDS = [
     "worker",
 ]
 
+UPDATABLE_FIELDS = [
+    "args",
+    "max_attempts",
+    "meta",
+    "priority",
+    "queue",
+    "scheduled_at",
+    "tags",
+    "worker",
+]
+
 
 @cache
 def load_file(path: str, prefix: str = "public", apply_prefix: bool = True) -> str:
@@ -65,11 +76,34 @@ class Query:
 
             await conn.execute(stmt, args)
 
+    async def cancel_many_jobs(self, ids: list[int]) -> tuple[int, list[int]]:
+        async with self._driver.connection() as conn:
+            async with conn.transaction():
+                stmt = load_file("cancel_many_jobs.sql", self._prefix)
+                args = {"ids": ids}
+
+                result = await conn.execute(stmt, args)
+                rows = await result.fetchall()
+
+                executing_ids = [row[0] for row in rows if row[1] == "executing"]
+
+                return len(rows), executing_ids
+
     async def complete_job(self, job: Job) -> None:
         async with self._driver.connection() as conn:
             stmt = load_file("complete_job.sql", self._prefix)
 
             await conn.execute(stmt, {"id": job.id})
+
+    async def delete_many_jobs(self, ids: list[int]) -> int:
+        async with self._driver.connection() as conn:
+            async with conn.transaction():
+                stmt = load_file("delete_many_jobs.sql", self._prefix)
+                args = {"ids": ids}
+
+                result = await conn.execute(stmt, args)
+
+                return result.rowcount
 
     async def error_job(self, job: Job, error: Exception, seconds: int) -> None:
         async with self._driver.connection() as conn:
@@ -149,38 +183,15 @@ class Query:
 
                 return result.rowcount
 
-    async def retry_all_jobs(self, ids: list[int]) -> int:
+    async def retry_many_jobs(self, ids: list[int]) -> int:
         async with self._driver.connection() as conn:
             async with conn.transaction():
-                stmt = load_file("retry_all_jobs.sql", self._prefix)
+                stmt = load_file("retry_many_jobs.sql", self._prefix)
                 args = {"ids": ids}
 
                 result = await conn.execute(stmt, args)
 
                 return result.rowcount
-
-    async def delete_all_jobs(self, ids: list[int]) -> int:
-        async with self._driver.connection() as conn:
-            async with conn.transaction():
-                stmt = load_file("delete_all_jobs.sql", self._prefix)
-                args = {"ids": ids}
-
-                result = await conn.execute(stmt, args)
-
-                return result.rowcount
-
-    async def cancel_all_jobs(self, ids: list[int]) -> tuple[int, list[int]]:
-        async with self._driver.connection() as conn:
-            async with conn.transaction():
-                stmt = load_file("cancel_all_jobs.sql", self._prefix)
-                args = {"ids": ids}
-
-                result = await conn.execute(stmt, args)
-                rows = await result.fetchall()
-
-                executing_ids = [row[0] for row in rows if row[1] == "executing"]
-
-                return len(rows), executing_ids
 
     async def snooze_job(self, job: Job, seconds: int) -> None:
         async with self._driver.connection() as conn:
@@ -201,6 +212,38 @@ class Query:
                 rows = await result.fetchall()
 
                 return [queue for (queue,) in rows]
+
+    async def update_many_jobs(self, jobs: list[Job]) -> list[Job]:
+        async with self._driver.connection() as conn:
+            async with conn.transaction():
+                stmt = load_file("update_job.sql", self._prefix)
+                args = defaultdict(list)
+
+                for job in jobs:
+                    data = job.to_dict()
+                    args["ids"].append(job.id)
+
+                    for key in UPDATABLE_FIELDS:
+                        args[key].append(data[key])
+
+                result = await conn.execute(stmt, dict(args))
+                rows = await result.fetchall()
+
+                return [
+                    replace(
+                        job,
+                        args=row[0],
+                        max_attempts=row[1],
+                        meta=row[2],
+                        priority=row[3],
+                        queue=row[4],
+                        scheduled_at=row[5],
+                        state=row[6],
+                        tags=row[7],
+                        worker=row[8],
+                    )
+                    for job, row in zip(jobs, rows)
+                ]
 
     # Leadership
 

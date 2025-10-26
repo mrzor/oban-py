@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import socket
 
-from typing import Any
+from typing import Any, Callable
 
 from .job import Job
 from .types import QueueInfo
@@ -298,9 +298,9 @@ class Oban:
         """
         job_id = job.id if isinstance(job, Job) else job
 
-        await self.retry_all_jobs([job_id])
+        await self.retry_many_jobs([job_id])
 
-    async def retry_all_jobs(self, jobs: list[Job | int]) -> int:
+    async def retry_many_jobs(self, jobs: list[Job | int]) -> int:
         """Retry multiple jobs by setting them as available for execution.
 
         Jobs currently `available` or `executing` are ignored. Jobs are scheduled
@@ -315,15 +315,15 @@ class Oban:
         Example:
             Retry multiple jobs by ID:
 
-            >>> count = await oban.retry_all_jobs([123, 456, 789])
+            >>> count = await oban.retry_many_jobs([123, 456, 789])
 
             Retry multiple job instances:
 
-            >>> count = await oban.retry_all_jobs([job_1, job_2, job_3])
+            >>> count = await oban.retry_many_jobs([job_1, job_2, job_3])
         """
         job_ids = [job.id if isinstance(job, Job) else job for job in jobs]
 
-        return await self._query.retry_all_jobs(job_ids)
+        return await self._query.retry_many_jobs(job_ids)
 
     async def delete_job(self, job: Job | int) -> None:
         """Delete a job from the database.
@@ -344,9 +344,9 @@ class Oban:
         """
         job_id = job.id if isinstance(job, Job) else job
 
-        await self.delete_all_jobs([job_id])
+        await self.delete_many_jobs([job_id])
 
-    async def delete_all_jobs(self, jobs: list[Job | int]) -> int:
+    async def delete_many_jobs(self, jobs: list[Job | int]) -> int:
         """Delete multiple jobs from the database.
 
         Jobs in the `executing` state cannot be deleted and are ignored.
@@ -360,15 +360,15 @@ class Oban:
         Example:
             Delete multiple jobs by ID:
 
-            >>> count = await oban.delete_all_jobs([123, 456, 789])
+            >>> count = await oban.delete_many_jobs([123, 456, 789])
 
             Delete multiple job instances:
 
-            >>> count = await oban.delete_all_jobs([job_1, job_2, job_3])
+            >>> count = await oban.delete_many_jobs([job_1, job_2, job_3])
         """
         job_ids = [job.id if isinstance(job, Job) else job for job in jobs]
 
-        return await self._query.delete_all_jobs(job_ids)
+        return await self._query.delete_many_jobs(job_ids)
 
     async def cancel_job(self, job: Job | int) -> None:
         """Cancel a job to prevent it from running.
@@ -400,9 +400,9 @@ class Oban:
         """
         job_id = job.id if isinstance(job, Job) else job
 
-        await self.cancel_all_jobs([job_id])
+        await self.cancel_many_jobs([job_id])
 
-    async def cancel_all_jobs(self, jobs: list[Job | int]) -> int:
+    async def cancel_many_jobs(self, jobs: list[Job | int]) -> int:
         """Cancel multiple jobs to prevent them from running.
 
         Jobs are marked as `cancelled`. Only jobs with the statuses `executing`,
@@ -427,15 +427,15 @@ class Oban:
         Example:
             Cancel multiple jobs by ID:
 
-            >>> count = await oban.cancel_all_jobs([123, 456, 789])
+            >>> count = await oban.cancel_many_jobs([123, 456, 789])
 
             Cancel multiple job instances:
 
-            >>> count = await oban.cancel_all_jobs([job_1, job_2, job_3])
+            >>> count = await oban.cancel_many_jobs([job_1, job_2, job_3])
         """
         job_ids = [job.id if isinstance(job, Job) else job for job in jobs]
 
-        count, executing_ids = await self._query.cancel_all_jobs(job_ids)
+        count, executing_ids = await self._query.cancel_many_jobs(job_ids)
 
         if executing_ids:
             payloads = [{"action": "pkill", "job_id": id} for id in executing_ids]
@@ -443,6 +443,148 @@ class Oban:
             await self._notifier.notify("signal", payloads)
 
         return count
+
+    async def update_job(
+        self, job: Job | int, changes: dict[str, Any] | Callable[[Job], dict[str, Any]]
+    ) -> Job:
+        """Update a job with the given changes.
+
+        This function accepts either a job instance or id, along with either a dict of
+        changes or a callable that receives the job and returns a dict of changes.
+
+        The update operation is wrapped in a transaction with a locking clause to
+        prevent concurrent modifications.
+
+        Fields and Validations:
+            All changes are validated using the same validations as `Job.new()`. Only the
+            following subset of fields can be updated:
+
+            - args
+            - max_attempts
+            - meta
+            - priority
+            - queue
+            - scheduled_at
+            - tags
+            - worker
+
+        Warning:
+            Use caution when updating jobs that are currently executing. Modifying fields
+            like args, queue, or worker while a job is running may lead to unexpected
+            behavior or inconsistent state. Consider whether the job should be cancelled
+            first, or if the update should be deferred until after execution completes.
+
+        Args:
+            job: A Job instance or job ID to update
+            changes: Either a dict of field changes, or a callable that takes the job
+                     and returns a dict of changes
+
+        Returns:
+            The updated job with all current field values
+
+        Example:
+            Update a job with a dict of changes:
+
+            >>> await oban.update_job(job, {"tags": ["urgent"], "priority": 0})
+
+            Update a job by id:
+
+            >>> await oban.update_job(123, {"tags": ["processed"], "meta": {"batch_id": 456}})
+
+            Update a job using a callable:
+
+            >>> await oban.update_job(job, lambda j: {"tags": ["retry"] + j.tags})
+
+            >>> from datetime import datetime
+            >>> await oban.update_job(job, lambda j: {
+            ...     "meta": {**j.meta, "processed_at": datetime.now()}
+            ... })
+
+            Use schedule_in for convenient scheduling:
+
+            >>> await oban.update_job(job, {"schedule_in": 300})  # 5 minutes from now
+        """
+        result = await self.update_many_jobs([job], changes)
+
+        return result[0]
+
+    async def update_many_jobs(
+        self,
+        jobs: list[Job | int],
+        changes: dict[str, Any] | Callable[[Job], dict[str, Any]],
+    ) -> list[Job]:
+        """Update multiple jobs with the given changes.
+
+        This function accepts a list of job instances or ids, along with either a dict of
+        changes or a callable that receives each job and returns a dict of changes.
+
+        The update operation is wrapped in a transaction with a locking clause to
+        prevent concurrent modifications.
+
+        Fields and Validations:
+            All changes are validated using the same validations as Job.new(). Only the
+            following subset of fields can be updated:
+
+            - args
+            - max_attempts
+            - meta
+            - priority
+            - queue
+            - scheduled_at
+            - tags
+            - worker
+
+        Warning:
+            Use caution when updating jobs that are currently executing. Modifying fields
+            like args, queue, or worker while a job is running may lead to unexpected
+            behavior or inconsistent state. Consider whether the job should be cancelled
+            first, or if the update should be deferred until after execution completes.
+
+        Args:
+            jobs: List of Job instances or job IDs to update
+            changes: Either a dict of field changes, or a callable that takes a job
+                     and returns a dict of changes
+
+        Returns:
+            The updated jobs with all current field values
+
+        Example:
+            Update multiple jobs with a dict of changes:
+
+            >>> await oban.update_many_jobs([job1, job2], {"priority": 0})
+
+            Update multiple jobs by ID:
+
+            >>> await oban.update_many_jobs([123, 456], {"tags": ["processed"]})
+
+            Update multiple jobs using a callable:
+
+            >>> await oban.update_many_jobs(
+            ...     [job1, job2],
+            ...     lambda job: {"tags": ["retry"] + job.tags}
+            ... )
+        """
+        instances = []
+        for job in jobs:
+            if isinstance(job, Job):
+                instances.append(job)
+            else:
+                fetched = await self._query.get_job(job)
+
+                if fetched is None:
+                    raise ValueError(f"Job with id {job} not found")
+
+                instances.append(fetched)
+
+        # This isn't optimized for small updates, as we're re-sending values that haven't changed
+        # and we're also not combining fetching and updating in a single transaction. This works
+        # well enough for an infrequently used method.
+        updated = [
+            job.update(changes.copy() if isinstance(changes, dict) else changes(job))
+            for job in instances
+        ]
+
+        return await self._query.update_many_jobs(updated)
 
     async def pause_queue(self, queue: str, *, node: str | None = None) -> None:
         """Pause a queue, preventing it from executing new jobs.

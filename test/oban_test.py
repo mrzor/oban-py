@@ -526,7 +526,7 @@ class TestRetryAllJobs:
             await with_backoff(lambda: assert_state(oban, job_2.id, "cancelled"))
             await with_backoff(lambda: assert_state(oban, job_3.id, "completed"))
 
-            assert await oban.retry_all_jobs([job_1.id, job_2, job_3]) == 3
+            assert await oban.retry_many_jobs([job_1.id, job_2, job_3]) == 3
 
             await with_backoff(lambda: assert_state(oban, job_1.id, "available"))
             await with_backoff(lambda: assert_state(oban, job_2.id, "available"))
@@ -562,7 +562,7 @@ class TestDeleteAllJobs:
             job_1 = await Worker.enqueue({"act": "ok", "ref": 1})
             job_2 = await Worker.enqueue({"act": "ok", "ref": 2})
 
-            assert await oban.delete_all_jobs([job_1.id, job_2]) == 2
+            assert await oban.delete_many_jobs([job_1.id, job_2]) == 2
 
             assert await get_job(oban, job_1.id) is None
             assert await get_job(oban, job_2.id) is None
@@ -627,10 +627,48 @@ class TestCancelAllJobs:
             job_1 = await Worker.enqueue()
             job_2 = await Worker.enqueue()
 
-            await oban.cancel_all_jobs([job_1.id, job_2]) == 2
+            await oban.cancel_many_jobs([job_1.id, job_2]) == 2
 
             await assert_state(oban, job_1.id, "cancelled")
             await assert_state(oban, job_2.id, "cancelled")
+
+
+class TestUpdateJob:
+    async def test_updating_job(self, oban_instance):
+        async with oban_instance() as oban:
+            job = await Worker.enqueue({"ref": 1}, priority=5, tags=["original"])
+
+            updated = await oban.update_job(
+                job.id, {"priority": 0, "tags": ["updated"]}
+            )
+
+            assert updated.id == job.id
+            assert updated.priority == 0
+            assert updated.tags == ["updated"]
+            assert updated.args == {"ref": 1}
+
+
+class TestUpdateManyJob:
+    async def test_updating_multiple_jobs(self, oban_instance):
+        async with oban_instance() as oban:
+            job_1 = await Worker.enqueue({"ref": 1}, priority=5, tags=["original"])
+            job_2 = await Worker.enqueue({"ref": 2}, priority=5, tags=[])
+
+            updated = await oban.update_many_jobs(
+                [job_1, job_2.id],
+                lambda job: {"tags": ["updated"] + job.tags, "priority": 0},
+            )
+
+            assert len(updated) == 2
+            assert updated[0].priority == 0
+            assert updated[0].tags == ["original", "updated"]
+            assert updated[1].priority == 0
+            assert updated[1].tags == ["updated"]
+
+    async def test_updating_missing_job(self, oban_instance):
+        async with oban_instance() as oban:
+            with pytest.raises(ValueError, match="not found"):
+                await oban.update_many_jobs([999999], {"priority": 0})
 
 
 class TestScaleQueue:
