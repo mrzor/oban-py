@@ -333,8 +333,9 @@ async def drain_queue(
             case []:
                 break
             case [job]:
-                # TODO: We need to run the ack _query
                 executor = await Executor(job=job, safe=with_safety).execute()
+
+                await oban._query.ack_jobs([executor.action])
 
                 summary[executor.status] += 1
 

@@ -5,7 +5,6 @@ WITH locked_jobs AS (
     oban_jobs
   WHERE
     state = ANY('{scheduled,retryable}')
-    AND queue = ANY(%(queues)s)
     AND scheduled_at <= coalesce(%(before)s, timezone('UTC', now()))
   ORDER BY
     scheduled_at ASC, id ASC

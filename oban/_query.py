@@ -12,7 +12,17 @@ from typing import Any
 from psycopg.rows import class_row
 
 from ._driver import wrap_conn
+from ._executor import AckAction
 from .job import Job
+
+ACKABLE_FIELDS = [
+    "id",
+    "state",
+    "attempt_change",
+    "schedule_in",
+    "error",
+    "meta",
+]
 
 
 INSERTABLE_FIELDS = [
@@ -61,6 +71,17 @@ class Query:
 
     # Jobs
 
+    async def ack_jobs(self, acks: [AckAction]) -> None:
+        async with self._driver.connection() as conn:
+            async with conn.transaction():
+                stmt = load_file("ack_jobs.sql", self._prefix)
+                args = {
+                    field: [getattr(ack, field) for ack in acks]
+                    for field in ACKABLE_FIELDS
+                }
+
+                await conn.execute(stmt, args)
+
     async def all_jobs(self, states: list[str]) -> list[Job]:
         async with self._driver.connection() as conn:
             stmt = load_file("all_jobs.sql", self._prefix)
@@ -68,13 +89,6 @@ class Query:
             async with conn.cursor(row_factory=class_row(Job)) as cur:
                 await cur.execute(stmt, {"states": states})
                 return await cur.fetchall()
-
-    async def cancel_job(self, job: Job, reason: str) -> None:
-        async with self._driver.connection() as conn:
-            stmt = load_file("cancel_job.sql", self._prefix)
-            args = {"attempt": job.attempt, "id": job.id, "reason": reason}
-
-            await conn.execute(stmt, args)
 
     async def cancel_many_jobs(self, ids: list[int]) -> tuple[int, list[int]]:
         async with self._driver.connection() as conn:
@@ -89,12 +103,6 @@ class Query:
 
                 return len(rows), executing_ids
 
-    async def complete_job(self, job: Job) -> None:
-        async with self._driver.connection() as conn:
-            stmt = load_file("complete_job.sql", self._prefix)
-
-            await conn.execute(stmt, {"id": job.id})
-
     async def delete_many_jobs(self, ids: list[int]) -> int:
         async with self._driver.connection() as conn:
             async with conn.transaction():
@@ -104,18 +112,6 @@ class Query:
                 result = await conn.execute(stmt, args)
 
                 return result.rowcount
-
-    async def error_job(self, job: Job, error: Exception, seconds: int) -> None:
-        async with self._driver.connection() as conn:
-            stmt = load_file("error_job.sql", self._prefix)
-            args = {
-                "attempt": job.attempt,
-                "id": job.id,
-                "error": repr(error),
-                "seconds": seconds,
-            }
-
-            await conn.execute(stmt, args)
 
     async def get_job(self, job_id: int) -> Job:
         async with self._driver.connection() as conn:
@@ -192,13 +188,6 @@ class Query:
                 result = await conn.execute(stmt, args)
 
                 return result.rowcount
-
-    async def snooze_job(self, job: Job, seconds: int) -> None:
-        async with self._driver.connection() as conn:
-            stmt = load_file("snooze_job.sql", self._prefix)
-            args = {"id": job.id, "seconds": seconds}
-
-            await conn.execute(stmt, args)
 
     async def stage_jobs(
         self, limit: int, queues: list[str], before: datetime | None = None

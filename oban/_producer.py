@@ -45,6 +45,7 @@ class Producer:
         self._listen_token = None
         self._loop_task = None
         self._notified = asyncio.Event()
+        self._pending_acks = []
         self._running_jobs = {}
         self._started_at = None
         self._uuid = str(uuid4())
@@ -163,7 +164,9 @@ class Producer:
 
             except asyncio.CancelledError:
                 break
-            except Exception:
+            except Exception as error:
+                # TODO: This needs some backoff
+                print(error)
                 pass
 
     async def _debounce_fetch(self) -> None:
@@ -178,6 +181,11 @@ class Producer:
         self.notify()
 
     async def _fetch_jobs(self, demand: int):
+        if self._pending_acks:
+            await self._query.ack_jobs(self._pending_acks)
+
+            self._pending_acks.clear()
+
         return await self._query.fetch_jobs(
             demand=demand,
             queue=self._queue,
@@ -188,7 +196,9 @@ class Producer:
     async def _execute(self, job: Job) -> None:
         job._cancellation = asyncio.Event()
 
-        await Executor(job=job, safe=True).execute()
+        executor = await Executor(job=job, safe=True).execute()
+
+        self._pending_acks.append(executor.action)
 
     async def _on_signal(self, _channel: str, payload: dict) -> None:
         ident = payload.get("ident", "any")

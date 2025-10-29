@@ -164,15 +164,15 @@ class TestIntegration:
     @pytest.mark.oban(queues={"default": 2})
     async def test_snoozed_jobs_have_future_scheduled_at_timestamp(self, oban_instance):
         async with oban_instance() as oban:
-            job = await Worker.enqueue({"act": "sn", "ref": 1})
-            now = datetime.now(timezone.utc)
+            job = await Worker.enqueue({"act": "sn", "ref": 1}, meta={"keep": True})
 
             await with_backoff(lambda: assert_state(oban, job.id, "scheduled"))
 
             job = await get_job(oban, job.id)
 
-            assert job.scheduled_at > now
-            assert (job.scheduled_at - now).total_seconds() >= 1
+            assert job.scheduled_at > datetime.now(timezone.utc)
+            assert job.meta["snoozed"] == 1
+            assert job.meta["keep"]
 
     @pytest.mark.oban(queues={"default": 2})
     async def test_errored_jobs_are_retryable_with_backoff(self, oban_instance):
@@ -607,10 +607,8 @@ class TestCancelJob:
 
     async def test_cancelling_completed_job_is_ignored(self, oban_instance):
         async with oban_instance() as oban:
-            job = await Worker.enqueue({"act": "ok", "ref": 1})
+            job = await Worker.enqueue({"act": "ok", "ref": 1}, state="completed")
 
-            # Manually mark it as completed
-            await oban._query.complete_job(job)
             await oban.cancel_job(job.id)
 
             await assert_state(oban, job.id, "completed")

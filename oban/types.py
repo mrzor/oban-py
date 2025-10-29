@@ -30,16 +30,6 @@ class JobState(StrEnum):
 
 
 @dataclass(frozen=True, slots=True)
-class Snooze:
-    seconds: int
-
-
-@dataclass(frozen=True, slots=True)
-class Cancel:
-    reason: str
-
-
-@dataclass(frozen=True, slots=True)
 class QueueInfo:
     """Information about a queue's runtime state.
 
@@ -58,6 +48,19 @@ class QueueInfo:
     queue: str
     running: list[int]
     started_at: datetime
+
+
+# Return Types
+
+
+@dataclass(frozen=True, slots=True)
+class Snooze:
+    seconds: int
+
+
+@dataclass(frozen=True, slots=True)
+class Cancel:
+    reason: str
 
 
 type Result[T] = Snooze | Cancel | None

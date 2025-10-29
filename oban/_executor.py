@@ -1,17 +1,37 @@
 from __future__ import annotations
 
+import json
 import time
 import traceback
 
+from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
 from . import telemetry
 from ._backoff import jittery_clamped
 from ._worker import resolve_worker
-from .types import Cancel, Snooze
+from .types import Cancel, JobState, Snooze
 
 if TYPE_CHECKING:
     from .job import Job
+
+
+@dataclass
+class AckAction:
+    id: int
+    state: str
+    attempt_change: int | None = None
+    error: dict | None = None
+    meta: dict | None = None
+    schedule_in: int | None = None
+
+    def __post_init__(self):
+        if self.error is not None:
+            self.error = json.dumps(self.error)
+
+        if self.meta is not None:
+            self.meta = json.dumps(self.meta)
 
 
 class Executor:
@@ -21,7 +41,6 @@ class Executor:
 
         self.action = None
         self.result = None
-        self.status = None
         self.worker = None
 
         self._start_time = None
@@ -35,6 +54,11 @@ class Executor:
         self._reraise_unsafe()
 
         return self
+
+    @property
+    def status(self) -> JobState | None:
+        if self.action:
+            return self.action.state
 
     def _report_started(self) -> None:
         self._start_time = time.monotonic_ns()
@@ -56,23 +80,35 @@ class Executor:
         match self.result:
             case Exception() as error:
                 if self.job.attempt >= self.job.max_attempts:
-                    self.action = ("discard", error)
-                    self.status = "discarded"
+                    self.action = AckAction(
+                        id=self.job.id,
+                        state="discarded",
+                        error=self._format_error(error),
+                    )
                 else:
-                    self.action = ("error", error, self._retry_backoff())
-                    self.status = "retryable"
+                    self.action = AckAction(
+                        id=self.job.id,
+                        state="retryable",
+                        error=self._format_error(error),
+                        schedule_in=self._retry_backoff(),
+                    )
 
             case Snooze(seconds=seconds):
-                self.action = ("snooze", seconds)
-                self.status = "scheduled"
+                self.action = AckAction(
+                    id=self.job.id,
+                    attempt_change=-1,
+                    state="scheduled",
+                    schedule_in=seconds,
+                    meta={"snoozed": self.job.meta.get("snoozed", 0) + 1},
+                )
 
             case Cancel(reason=reason):
-                self.action = ("cancel", reason)
-                self.status = "cancelled"
+                self.action = AckAction(
+                    id=self.job.id, state="cancelled", error=self._format_error(reason)
+                )
 
             case _:
-                self.action = "complete"
-                self.status = "completed"
+                self.action = AckAction(id=self.job.id, state="completed")
 
     def _report_stopped(self) -> None:
         stop_time = time.monotonic_ns()
@@ -116,3 +152,15 @@ class Executor:
             return int(delta * 1_000_000_000)
         else:
             return 0
+
+    def _format_error(self, error: Exception | str) -> dict:
+        if isinstance(error, str):
+            error_str = error
+        else:
+            error_str = repr(error)
+
+        return {
+            "attempt": self.job.attempt,
+            "at": datetime.now(timezone.utc).isoformat(),
+            "error": error_str,
+        }
