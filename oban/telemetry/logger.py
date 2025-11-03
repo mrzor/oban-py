@@ -8,6 +8,22 @@ _EVENTS = [
     "oban.job.start",
     "oban.job.stop",
     "oban.job.exception",
+    "oban.leader.election.stop",
+    "oban.leader.election.exception",
+    "oban.stager.stage.stop",
+    "oban.stager.stage.exception",
+    "oban.lifeline.rescue.stop",
+    "oban.lifeline.rescue.exception",
+    "oban.pruner.prune.stop",
+    "oban.pruner.prune.exception",
+    "oban.refresher.refresh.stop",
+    "oban.refresher.refresh.exception",
+    "oban.refresher.cleanup.stop",
+    "oban.refresher.cleanup.exception",
+    "oban.scheduler.evaluate.stop",
+    "oban.scheduler.evaluate.exception",
+    "oban.producer.fetch.stop",
+    "oban.producer.fetch.exception",
 ]
 
 _JOB_FIELDS = [
@@ -26,7 +42,7 @@ class _LoggerHandler:
     def __init__(
         self,
         *,
-        level: int = logging.INFO,
+        level: int = logging.DEBUG,
         logger: logging.Logger | None = None,
     ):
         self.level = level
@@ -40,6 +56,12 @@ class _LoggerHandler:
         self.logger.log(level, message)
 
     def _format_event(self, name: str, meta: Dict[str, Any]) -> Dict[str, Any]:
+        if name.startswith("oban.job"):
+            return self._format_job_event(name, meta)
+        else:
+            return self._format_loop_event(name, meta)
+
+    def _format_job_event(self, name: str, meta: Dict[str, Any]) -> Dict[str, Any]:
         job = meta.get("job")
 
         data = {field: getattr(job, field) for field in _JOB_FIELDS}
@@ -63,7 +85,18 @@ class _LoggerHandler:
 
         return data
 
+    def _format_loop_event(self, name: str, meta: Dict[str, Any]) -> Dict[str, Any]:
+        data = {key: val for key, val in meta.items() if key != "system_time"}
+
+        data["duration"] = self._to_ms(data["duration"])
+        data["event"] = name
+
+        return data
+
     def _get_level(self, name: str) -> int:
+        if name.endswith(".exception") and name != "oban.job.exception":
+            return logging.ERROR
+
         return self.level
 
     def _to_ms(self, value: int) -> float:

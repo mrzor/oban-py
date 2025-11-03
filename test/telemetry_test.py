@@ -88,7 +88,7 @@ class TestTelemetrySpan:
 
         assert start_name == "test.operation.start"
         assert start_meta["job_id"] == 123
-        assert "monotonic_time" in start_meta
+        assert "system_time" in start_meta
 
         assert stop_name == "test.operation.stop"
         assert stop_meta["job_id"] == 123

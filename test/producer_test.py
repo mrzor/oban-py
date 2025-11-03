@@ -4,7 +4,6 @@ import pytest
 from oban import telemetry, worker
 
 
-
 async def all_producers(conn):
     result = await conn.execute("""
         SELECT uuid, name, node, queue, meta

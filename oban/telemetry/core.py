@@ -100,7 +100,7 @@ def execute(name: str, metadata: Metadata) -> None:
 
     for handler in handlers:
         try:
-            handler(name, metadata)
+            handler(name, metadata.copy())
         except Exception as error:
             logger.exception("Telemetry handler error for event '%s': %s", name, error)
 
@@ -127,12 +127,12 @@ def span(prefix: str, start_metadata: Metadata):
             collector.add({"state": result.state})
 
         # Emits:
-        # - "oban.job.execute.start" with job_id and monotonic_time
-        # - "oban.job.execute.stop" with job_id, state, duration, and monotonic_time
+        # - "oban.job.execute.start" with job_id and system_time
+        # - "oban.job.execute.stop" with job_id, state, duration, and system_time
     """
     start_time = time.monotonic_ns()
 
-    execute(f"{prefix}.start", {"monotonic_time": start_time, **start_metadata})
+    execute(f"{prefix}.start", {"system_time": start_time, **start_metadata})
 
     collector = Collector()
 
@@ -144,7 +144,7 @@ def span(prefix: str, start_metadata: Metadata):
         execute(
             f"{prefix}.stop",
             {
-                "monotonic_time": end_time,
+                "system_time": end_time,
                 "duration": end_time - start_time,
                 **start_metadata,
                 **collector.get_all(),
@@ -157,7 +157,7 @@ def span(prefix: str, start_metadata: Metadata):
         execute(
             f"{prefix}.exception",
             {
-                "monotonic_time": end_time,
+                "system_time": end_time,
                 "duration": end_time - start_time,
                 "error_message": str(error),
                 "error_type": type(error).__name__,
