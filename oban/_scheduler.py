@@ -325,7 +325,9 @@ class Scheduler:
 
             context.add({"enqueued_count": len(result)})
 
-            await self._notifier.notify("insert", [{"queue": queue} for queue in queues])
+            await self._notifier.notify(
+                "insert", [{"queue": queue} for queue in queues]
+            )
 
     def _is_now(self, entry: ScheduledEntry) -> bool:
         now = datetime.now(entry.timezone or self._timezone)

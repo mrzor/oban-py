@@ -1,0 +1,110 @@
+import json
+import logging
+from typing import Any, Dict, List
+
+from . import core
+
+_EVENTS = [
+    "oban.job.start",
+    "oban.job.stop",
+    "oban.job.exception",
+]
+
+_JOB_FIELDS = [
+    "id",
+    "worker",
+    "queue",
+    "attempt",
+    "max_attempts",
+    "args",
+    "meta",
+    "tags",
+]
+
+
+class _LoggerHandler:
+    def __init__(
+        self,
+        *,
+        level: int = logging.INFO,
+        logger: logging.Logger | None = None,
+    ):
+        self.level = level
+        self.logger = logger or logging.getLogger("oban")
+
+    def _handle_event(self, name: str, meta: Dict[str, Any]) -> None:
+        data = self._format_event(name, meta)
+        level = self._get_level(name)
+        message = json.dumps(data)
+
+        self.logger.log(level, message)
+
+    def _format_event(self, name: str, meta: Dict[str, Any]) -> Dict[str, Any]:
+        job = meta.get("job")
+
+        data = {field: getattr(job, field) for field in _JOB_FIELDS}
+        data["event"] = name
+
+        match name:
+            case "oban.job.start":
+                pass
+
+            case "oban.job.stop":
+                data["state"] = meta["state"]
+                data["duration"] = self._to_ms(meta["duration"])
+                data["queue_time"] = self._to_ms(meta["queue_time"])
+
+            case "oban.job.exception":
+                data["state"] = meta["state"]
+                data["error_type"] = meta["error_type"]
+                data["error_message"] = meta["error_message"]
+                data["duration"] = self._to_ms(meta["duration"])
+                data["queue_time"] = self._to_ms(meta["queue_time"])
+
+        return data
+
+    def _get_level(self, name: str) -> int:
+        return self.level
+
+    def _to_ms(self, value: int) -> float:
+        return round(value / 1_000_000, 2)
+
+
+def attach(
+    *,
+    level: int = logging.INFO,
+    logger: logging.Logger | None = None,
+    events: List[str] | None = None,
+) -> None:
+    """Attach a logger handler to telemetry events.
+
+    Emits structured logs for Oban telemetry events using Python's standard
+    logging module.
+
+    Args:
+        level: Logging level for .stop events (default: INFO)
+        logger: Custom logger instance (default: logging.getLogger("oban"))
+        events: Specific events to log (default: all job events)
+
+    Example:
+        >>> import logging
+        >>>
+        >>> # Configure Python logging
+        >>> logging.basicConfig(level=logging.INFO)
+        >>>
+        >>> # Attach logger to telemetry events
+        >>> oban.telemetry.logger.attach()
+    """
+    handler = _LoggerHandler(level=level, logger=logger)
+    events = events or _EVENTS
+
+    core.attach("oban-logger", events, handler._handle_event)
+
+
+def detach() -> None:
+    """Detach the logger handler from telemetry events.
+
+    Example:
+        >>> oban.telemetry.logger.detach()
+    """
+    core.detach("oban-logger")

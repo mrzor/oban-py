@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING
 from ._executor import Executor
 from .job import Job
 from .oban import get_instance
-from ._worker import resolve_worker, worker_name
+from ._worker import worker_name
 
 if TYPE_CHECKING:
     from .oban import Oban
