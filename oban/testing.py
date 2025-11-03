@@ -375,7 +375,7 @@ def process_job(job: Job):
         The result from the worker's process method (any value is accepted)
 
     Raises:
-        WorkerResolutionError: If the worker cannot be resolved from the job's worker path
+        Any exception raised by the worker if it fails
 
     Example:
         >>> from oban import worker
@@ -426,14 +426,13 @@ def process_job(job: Job):
     if job.inserted_at is None:
         job.inserted_at = now
 
-    worker_cls = resolve_worker(job.worker)
-    result = worker_cls().process(job)
+    async def _execute():
+        executor = await Executor(job, safe=False).execute()
 
-    if asyncio.iscoroutine(result):
-        try:
-            asyncio.get_running_loop()
-            return result
-        except RuntimeError:
-            return asyncio.run(result)
-    else:
-        return result
+        return executor.result
+
+    try:
+        asyncio.get_running_loop()
+        return _execute()
+    except RuntimeError:
+        return asyncio.run(_execute())
