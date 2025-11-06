@@ -1,5 +1,7 @@
 import pytest
 
+from oban._refresher import Refresher
+
 
 async def all_producers(conn):
     result = await conn.execute("""
@@ -35,6 +37,33 @@ async def insert_stale_producer(conn, queue, max_age):
     )
 
     return (await result.fetchone())[0]
+
+
+class TestRefresherValidation:
+    def test_valid_config_passes(self):
+        Refresher._validate(interval=15.0, max_age=60.0)
+
+    def test_interval_must_be_numeric(self):
+        with pytest.raises(TypeError, match="interval must be a number"):
+            Refresher._validate(interval="not a number", max_age=60.0)
+
+    def test_interval_must_be_positive(self):
+        with pytest.raises(ValueError, match="interval must be positive"):
+            Refresher._validate(interval=0, max_age=60.0)
+
+        with pytest.raises(ValueError, match="interval must be positive"):
+            Refresher._validate(interval=-1.0, max_age=60.0)
+
+    def test_max_age_must_be_numeric(self):
+        with pytest.raises(TypeError, match="max_age must be a number"):
+            Refresher._validate(interval=15.0, max_age="not a number")
+
+    def test_max_age_must_be_positive(self):
+        with pytest.raises(ValueError, match="max_age must be positive"):
+            Refresher._validate(interval=15.0, max_age=0)
+
+        with pytest.raises(ValueError, match="max_age must be positive"):
+            Refresher._validate(interval=15.0, max_age=-1.0)
 
 
 class TestRefresher:

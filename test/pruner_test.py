@@ -1,5 +1,7 @@
 import pytest
 
+from oban._pruner import Pruner
+
 
 async def insert_job(conn, state, ago):
     ts_field = f"{state}_at"
@@ -23,6 +25,57 @@ async def get_ids(conn):
     result = await rows.fetchall()
 
     return [id for (id,) in result]
+
+
+class TestPrunerValidation:
+    def test_valid_config_passes(self):
+        Pruner._validate(max_age=86_400, interval=60.0, limit=20_000)
+
+    def test_max_age_must_be_integer(self):
+        with pytest.raises(TypeError, match="max_age must be an integer"):
+            Pruner._validate(max_age=86_400.5, interval=60.0, limit=20_000)
+
+        with pytest.raises(TypeError, match="max_age must be an integer"):
+            Pruner._validate(max_age="86400", interval=60.0, limit=20_000)
+
+    def test_max_age_must_be_positive(self):
+        with pytest.raises(ValueError, match="max_age must be positive"):
+            Pruner._validate(max_age=0, interval=60.0, limit=20_000)
+
+        with pytest.raises(ValueError, match="max_age must be positive"):
+            Pruner._validate(max_age=-1, interval=60.0, limit=20_000)
+
+    def test_interval_must_be_numeric(self):
+        with pytest.raises(TypeError, match="interval must be a number"):
+            Pruner._validate(max_age=86_400, interval="not a number", limit=20_000)
+
+    def test_interval_must_be_positive(self):
+        with pytest.raises(ValueError, match="interval must be positive"):
+            Pruner._validate(max_age=86_400, interval=0, limit=20_000)
+
+        with pytest.raises(ValueError, match="interval must be positive"):
+            Pruner._validate(max_age=86_400, interval=-1.0, limit=20_000)
+
+    def test_limit_must_be_integer(self):
+        with pytest.raises(TypeError, match="limit must be an integer"):
+            Pruner._validate(max_age=86_400, interval=60.0, limit=999.5)
+
+        with pytest.raises(TypeError, match="limit must be an integer"):
+            Pruner._validate(max_age=86_400, interval=60.0, limit="20000")
+
+    def test_limit_must_be_positive(self):
+        with pytest.raises(ValueError, match="limit must be positive"):
+            Pruner._validate(max_age=86_400, interval=60.0, limit=0)
+
+        with pytest.raises(ValueError, match="limit must be positive"):
+            Pruner._validate(max_age=86_400, interval=60.0, limit=-1)
+
+    def test_boundary_values_pass(self):
+        # Minimum allowed values
+        Pruner._validate(max_age=60, interval=1.0, limit=1)
+
+        # Maximum allowed limit
+        Pruner._validate(max_age=86_400, interval=60.0, limit=100_000)
 
 
 class TestPruner:

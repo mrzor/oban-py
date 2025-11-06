@@ -29,6 +29,20 @@ class Refresher:
 
         self._loop_task = None
 
+        self._validate(interval=interval, max_age=max_age)
+
+    @staticmethod
+    def _validate(*, interval: float, max_age: float) -> None:
+        if not isinstance(interval, (int, float)):
+            raise TypeError(f"interval must be a number, got {interval}")
+        if interval <= 0:
+            raise ValueError(f"interval must be positive, got {interval}")
+
+        if not isinstance(max_age, (int, float)):
+            raise TypeError(f"max_age must be a number, got {max_age}")
+        if max_age <= 0:
+            raise ValueError(f"max_age must be positive, got {max_age}")
+
     async def start(self) -> None:
         self._loop_task = asyncio.create_task(self._loop(), name="oban-refresher")
 

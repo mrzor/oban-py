@@ -46,6 +46,20 @@ class Stager:
         self._loop_task = None
         self._listen_token = None
 
+        self._validate(interval=interval, limit=limit)
+
+    @staticmethod
+    def _validate(*, interval: float, limit: int) -> None:
+        if not isinstance(interval, (int, float)):
+            raise TypeError(f"interval must be a number, got {interval}")
+        if interval <= 0:
+            raise ValueError(f"interval must be positive, got {interval}")
+
+        if not isinstance(limit, int):
+            raise TypeError(f"limit must be an integer, got {limit}")
+        if limit <= 0:
+            raise ValueError(f"limit must be positive, got {limit}")
+
     async def start(self) -> None:
         self._listen_token = await self._notifier.listen(
             "insert", self._on_notification, wait=False

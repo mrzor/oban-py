@@ -1,5 +1,7 @@
 import pytest
 
+from oban._lifeline import Lifeline
+
 
 async def insert_executing_job(
     conn, node="dead-node", uuid="dead-uuid", attempt=1, max_attempts=20
@@ -34,6 +36,22 @@ async def insert_producer(conn, node, queue, uuid):
         """,
         (uuid, node, queue),
     )
+
+
+class TestLifelineValidation:
+    def test_valid_config_passes(self):
+        Lifeline._validate(interval=60.0)
+
+    def test_interval_must_be_numeric(self):
+        with pytest.raises(TypeError, match="interval must be a number"):
+            Lifeline._validate(interval="not a number")
+
+    def test_interval_must_be_positive(self):
+        with pytest.raises(ValueError, match="interval must be positive"):
+            Lifeline._validate(interval=0)
+
+        with pytest.raises(ValueError, match="interval must be positive"):
+            Lifeline._validate(interval=-1.0)
 
 
 class TestLifeline:

@@ -24,6 +24,15 @@ class Lifeline:
 
         self._loop_task = None
 
+        self._validate(interval=interval)
+
+    @staticmethod
+    def _validate(*, interval: float) -> None:
+        if not isinstance(interval, (int, float)):
+            raise TypeError(f"interval must be a number, got {interval}")
+        if interval <= 0:
+            raise ValueError(f"interval must be positive, got {interval}")
+
     async def start(self) -> None:
         self._loop_task = asyncio.create_task(self._loop(), name="oban-lifeline")
 

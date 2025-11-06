@@ -1,6 +1,23 @@
 import pytest
 
+from oban._leader import Leader
 from .helpers import with_backoff
+
+
+class TestLeaderValidation:
+    def test_valid_config_passes(self):
+        Leader._validate(interval=30.0)
+
+    def test_interval_must_be_numeric(self):
+        with pytest.raises(TypeError, match="interval must be a number"):
+            Leader._validate(interval="not a number")
+
+    def test_interval_must_be_positive(self):
+        with pytest.raises(ValueError, match="interval must be positive"):
+            Leader._validate(interval=0)
+
+        with pytest.raises(ValueError, match="interval must be positive"):
+            Leader._validate(interval=-1.0)
 
 
 class TestLeadership:

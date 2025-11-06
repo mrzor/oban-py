@@ -2,6 +2,7 @@ import asyncio
 import pytest
 
 from oban import telemetry, worker
+from oban._producer import Producer
 
 
 async def all_producers(conn):
@@ -12,6 +13,32 @@ async def all_producers(conn):
     """)
 
     return await result.fetchall()
+
+
+class TestProducerValidation:
+    def test_valid_config_passes(self):
+        Producer._validate(queue="default", limit=10)
+
+    def test_limit_must_be_positive(self):
+        with pytest.raises(ValueError, match="limit must be positive"):
+            Producer._validate(queue="default", limit=0)
+
+        with pytest.raises(ValueError, match="limit must be positive"):
+            Producer._validate(queue="default", limit=-1)
+
+    def test_queue_must_be_string(self):
+        with pytest.raises(TypeError, match="queue must be a string"):
+            Producer._validate(queue=123, limit=10)
+
+        with pytest.raises(TypeError, match="queue must be a string"):
+            Producer._validate(queue=None, limit=10)
+
+    def test_queue_must_not_be_blank(self):
+        with pytest.raises(ValueError, match="queue must not be blank"):
+            Producer._validate(queue="", limit=10)
+
+        with pytest.raises(ValueError, match="queue must not be blank"):
+            Producer._validate(queue="   ", limit=10)
 
 
 class TestProducerTracking:

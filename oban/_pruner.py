@@ -41,6 +41,25 @@ class Pruner:
 
         self._loop_task = None
 
+        self._validate(max_age=max_age, interval=interval, limit=limit)
+
+    @staticmethod
+    def _validate(*, max_age: int, interval: float, limit: int) -> None:
+        if not isinstance(max_age, int):
+            raise TypeError(f"max_age must be an integer, got {max_age}")
+        if max_age <= 0:
+            raise ValueError(f"max_age must be positive, got {max_age}")
+
+        if not isinstance(interval, (int, float)):
+            raise TypeError(f"interval must be a number, got {interval}")
+        if interval <= 0:
+            raise ValueError(f"interval must be positive, got {interval}")
+
+        if not isinstance(limit, int):
+            raise TypeError(f"limit must be an integer, got {limit}")
+        if limit <= 0:
+            raise ValueError(f"limit must be positive, got {limit}")
+
     async def start(self) -> None:
         self._loop_task = asyncio.create_task(self._loop(), name="oban-pruner")
 

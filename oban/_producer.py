@@ -52,6 +52,11 @@ class Producer:
 
     @staticmethod
     def _validate(*, queue: str, limit: int) -> None:
+        if not isinstance(queue, str):
+            raise TypeError(f"queue must be a string, got {queue}")
+        if not queue.strip():
+            raise ValueError("queue must not be blank")
+
         if limit < 1:
             raise ValueError(f"Queue '{queue}' limit must be positive")
 

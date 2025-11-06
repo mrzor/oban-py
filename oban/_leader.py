@@ -43,6 +43,15 @@ class Leader:
         self._loop_task = None
         self._started = asyncio.Event()
 
+        self._validate(interval=interval)
+
+    @staticmethod
+    def _validate(*, interval: float) -> None:
+        if not isinstance(interval, (int, float)):
+            raise TypeError(f"interval must be a number, got {interval}")
+        if interval <= 0:
+            raise ValueError(f"interval must be positive, got {interval}")
+
     @property
     def is_leader(self) -> bool:
         return self._is_leader
