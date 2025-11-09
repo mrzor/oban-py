@@ -27,7 +27,7 @@ def worker(*, oban: str = "oban", cron: str | dict | None = None, **overrides):
     Args:
         oban: Name of the Oban instance to use (default: "oban")
         cron: Optional cron configuration for periodic execution. Can be:
-              - A string expression (e.g., "0 0 \* \* \*" or "@daily")
+              - A string expression (e.g., "0 0 \\* \\* \\*" or "@daily")
               - A dict with "expr" and optional "timezone" keys (timezone as string)
         **overrides: Configuration options for the worker (queue, priority, etc.)
 
@@ -73,7 +73,7 @@ def worker(*, oban: str = "oban", cron: str | dict | None = None, **overrides):
         ...         return None
         >>>
         >>> # Periodic worker with timezone
-        >>> @worker(queue="reports", cron={"expr": "0 9 * * MON-FRI", "timezone": "America/New_York"})
+        >>> @worker(queue="reports", cron={"expr": "0 9 \\* \\* MON-FRI", "timezone": "America/New_York"})
         ... class BusinessHoursReport:
         ...     async def process(self, job):
         ...         print("Running during NY business hours")
@@ -150,7 +150,7 @@ def job(*, oban: str = "oban", cron: str | dict | None = None, **overrides):
     Args:
         oban: Name of the Oban instance to use (default: "oban")
         cron: Optional cron configuration for periodic execution. Can be:
-              - A string expression (e.g., "0 0 \* \* \*" or "@daily")
+              - A string expression (e.g., "0 0 \\* \\* \\*" or "@daily")
               - A dict with "expr" and optional "timezone" keys (timezone as string)
         **overrides: Configuration options (queue, priority, etc.)
 
@@ -163,8 +163,8 @@ def job(*, oban: str = "oban", cron: str | dict | None = None, **overrides):
         >>>
         >>> send_email.enqueue("user@example.com", "Hello", "World")
         >>>
-        >>> # Periodic job that runs every Monday at 9am
-        >>> @job(queue="reports", cron="0 9 * * MON")
+        >>> # Periodic job that runs weekly at midnight
+        >>> @job(queue="reports", cron="@weekly")
         ... def generate_weekly_report():
         ...     print("Generating weekly report")
         ...     return {"status": "complete"}
