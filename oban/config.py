@@ -19,7 +19,7 @@ class Config:
     with consistent configuration.
     """
 
-    database_url: str | None = None
+    dsn: str | None = None
     queues: dict[str, int] = field(default_factory=dict)
     name: str | None = None
     node: str | None = None
@@ -55,7 +55,7 @@ class Config:
 
         Supported environment variables:
 
-        - OBAN_DATABASE_URL: Database connection string (required)
+        - OBAN_DSN: Database connection string (required)
         - OBAN_QUEUES: Comma-separated queue:limit pairs (e.g., "default:10,mailers:5")
         - OBAN_PREFIX: Schema prefix (default: "public")
         - OBAN_NODE: Node identifier (default: hostname)
@@ -63,7 +63,7 @@ class Config:
         - OBAN_POOL_MAX_SIZE: Maximum connection pool size (default: 10)
         """
         return cls(
-            database_url=os.getenv("OBAN_DATABASE_URL"),
+            dsn=os.getenv("OBAN_DSN"),
             queues=cls._parse_queues(os.getenv("OBAN_QUEUES", "")),
             node=os.getenv("OBAN_NODE"),
             prefix=os.getenv("OBAN_PREFIX", "public"),
@@ -116,11 +116,11 @@ class Config:
         return Config(**merged)
 
     async def create_pool(self) -> AsyncConnectionPool:
-        if not self.database_url:
-            raise ValueError("database_url is required to create a connection pool")
+        if not self.dsn:
+            raise ValueError("dsn is required to create a connection pool")
 
         pool = AsyncConnectionPool(
-            conninfo=self.database_url,
+            conninfo=self.dsn,
             min_size=self.pool_min_size,
             max_size=self.pool_max_size,
             open=False,

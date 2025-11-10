@@ -57,11 +57,11 @@ def print_banner(version: str) -> None:
 
 
 @asynccontextmanager
-async def schema_pool(database_url: str) -> AsyncIterator[AsyncConnectionPool]:
-    if not database_url:
-        raise click.UsageError("--database-url is required (or set OBAN_DATABASE_URL)")
+async def schema_pool(dsn: str) -> AsyncIterator[AsyncConnectionPool]:
+    if not dsn:
+        raise click.UsageError("--dsn is required (or set OBAN_DSN)")
 
-    conf = Config(database_url=database_url, pool_min_size=1, pool_max_size=1)
+    conf = Config(dsn=dsn, pool_min_size=1, pool_max_size=1)
     pool = await conf.create_pool()
 
     try:
@@ -111,8 +111,8 @@ def main() -> None:
 
 @main.command()
 @click.option(
-    "--database-url",
-    envvar="OBAN_DATABASE_URL",
+    "--dsn",
+    envvar="OBAN_DSN",
     help="PostgreSQL connection string",
 )
 @click.option(
@@ -121,14 +121,14 @@ def main() -> None:
     default="public",
     help="PostgreSQL schema name (default: public)",
 )
-def install(database_url: str | None, prefix: str) -> None:
+def install(dsn: str | None, prefix: str) -> None:
     """Install the Oban database schema."""
 
     async def run() -> None:
         logger.info(f"Installing Oban schema in '{prefix}' schema...")
 
         try:
-            async with schema_pool(database_url) as pool:
+            async with schema_pool(dsn) as pool:
                 await install_schema(pool, prefix=prefix)
             logger.info("Schema installed successfully")
         except Exception as error:
@@ -140,8 +140,8 @@ def install(database_url: str | None, prefix: str) -> None:
 
 @main.command()
 @click.option(
-    "--database-url",
-    envvar="OBAN_DATABASE_URL",
+    "--dsn",
+    envvar="OBAN_DSN",
     help="PostgreSQL connection string",
 )
 @click.option(
@@ -150,14 +150,14 @@ def install(database_url: str | None, prefix: str) -> None:
     default="public",
     help="PostgreSQL schema name (default: public)",
 )
-def uninstall(database_url: str | None, prefix: str) -> None:
+def uninstall(dsn: str | None, prefix: str) -> None:
     """Uninstall the Oban database schema."""
 
     async def run() -> None:
         logger.info(f"Uninstalling Oban schema from '{prefix}' schema...")
 
         try:
-            async with schema_pool(database_url) as pool:
+            async with schema_pool(dsn) as pool:
                 await uninstall_schema(pool, prefix=prefix)
             logger.info("Schema uninstalled successfully")
         except Exception as e:
@@ -174,8 +174,8 @@ def uninstall(database_url: str | None, prefix: str) -> None:
     help="Path to TOML configuration file (default: searches for oban.toml)",
 )
 @click.option(
-    "--database-url",
-    envvar="OBAN_DATABASE_URL",
+    "--dsn",
+    envvar="OBAN_DSN",
     help="PostgreSQL connection string",
 )
 @click.option(
@@ -226,10 +226,10 @@ def start(log_level: str, config: str | None, **params: Any) -> None:
     Examples:
 
         # Start with queues
-        oban start --database-url postgresql://localhost/mydb --queues default:10,mailers:5
+        oban start --dsn postgresql://localhost/mydb --queues default:10,mailers:5
 
         # Use environment variables
-        export OBAN_DATABASE_URL=postgresql://localhost/mydb
+        export OBAN_DSN=postgresql://localhost/mydb
         export OBAN_QUEUES=default:10,mailers:5
         oban start
     """
@@ -249,7 +249,7 @@ def start(log_level: str, config: str | None, **params: Any) -> None:
         try:
             pool = await conf.create_pool()
             logger.info(
-                f"Connected to {conf.database_url} "
+                f"Connected to {conf.dsn} "
                 f"(pool min: {conf.pool_min_size}, max: {conf.pool_max_size})"
             )
         except Exception as error:
@@ -289,9 +289,9 @@ def _load_conf(conf_path: str | None, params: Any) -> Config:
 
     all_conf = tml_conf.merge(env_conf).merge(cli_conf)
 
-    if not all_conf.database_url:
+    if not all_conf.dsn:
         raise click.UsageError(
-            "--database-url, OBAN_DATABASE_URL, or database_url in oban.toml required"
+            "--dsn, OBAN_DSN, or dsn in oban.toml required"
         )
 
     return all_conf

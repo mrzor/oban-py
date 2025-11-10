@@ -5,7 +5,7 @@ from oban.config import Config
 
 class TestFromEnv:
     def test_from_env_with_all_params(self, monkeypatch):
-        monkeypatch.setenv("OBAN_DATABASE_URL", "postgresql://localhost/test")
+        monkeypatch.setenv("OBAN_DSN", "postgresql://localhost/test")
         monkeypatch.setenv("OBAN_QUEUES", "default:10,mailers:5")
         monkeypatch.setenv("OBAN_PREFIX", "custom")
         monkeypatch.setenv("OBAN_NODE", "node1")
@@ -14,7 +14,7 @@ class TestFromEnv:
 
         conf = Config.from_env()
 
-        assert conf.database_url == "postgresql://localhost/test"
+        assert conf.dsn == "postgresql://localhost/test"
         assert conf.queues == {"default": 10, "mailers": 5}
         assert conf.prefix == "custom"
         assert conf.node == "node1"
@@ -29,7 +29,7 @@ class TestFromEnv:
         assert conf.queues == {}
 
     def test_from_env_skips_malformed_queue_specs(self, monkeypatch):
-        monkeypatch.setenv("OBAN_DATABASE_URL", "postgresql://localhost/test")
+        monkeypatch.setenv("OBAN_DSN", "postgresql://localhost/test")
         monkeypatch.setenv("OBAN_QUEUES", "default:10,invalid,mailers:5")
 
         conf = Config.from_env()
@@ -40,7 +40,7 @@ class TestFromEnv:
 class TestFromCli:
     def test_from_cli_with_all_params(self):
         params = {
-            "database_url": "postgresql://localhost/test",
+            "dsn": "postgresql://localhost/test",
             "queues": "default:10, mailers:5",
             "prefix": "custom",
             "node": "node1",
@@ -50,7 +50,7 @@ class TestFromCli:
 
         conf = Config.from_cli(params)
 
-        assert conf.database_url == "postgresql://localhost/test"
+        assert conf.dsn == "postgresql://localhost/test"
         assert conf.queues == {"default": 10, "mailers": 5}
         assert conf.prefix == "custom"
         assert conf.node == "node1"
@@ -61,28 +61,28 @@ class TestFromCli:
 class TestMerge:
     def test_merge_cli_overrides_env(self):
         conf_a = Config(
-            database_url="postgresql://localhost/env_db",
+            dsn="postgresql://localhost/env_db",
             queues={"default": 5},
             prefix="env_prefix",
             pool_min_size=1,
         )
 
         conf_b = Config(
-            database_url="postgresql://localhost/cli_db",
+            dsn="postgresql://localhost/cli_db",
             queues={"default": 10, "mailers": 3},
             prefix="cli_prefix",
         )
 
         conf = conf_a.merge(conf_b)
 
-        assert conf.database_url == "postgresql://localhost/cli_db"
+        assert conf.dsn == "postgresql://localhost/cli_db"
         assert conf.queues == {"default": 10, "mailers": 3}
         assert conf.prefix == "cli_prefix"
         assert conf.pool_min_size == 1
 
     def test_merge_combines_queues(self):
         conf_a = Config(
-            database_url="postgresql://localhost/test",
+            dsn="postgresql://localhost/test",
             queues={"default": 5, "emails": 2},
         )
 
@@ -94,7 +94,7 @@ class TestMerge:
 
     def test_merge_dict_configs(self):
         conf_a = Config(
-            database_url="postgresql://localhost/test",
+            dsn="postgresql://localhost/test",
             pruner={"max_age": 3600, "interval": 60},
         )
 
@@ -111,7 +111,7 @@ class TestFromToml:
         config_file.write_text(
             dedent(
                 """
-                database_url = "postgresql://localhost/test"
+                dsn = "postgresql://localhost/test"
                 pool_min_size = 2
 
                 [queues]
@@ -126,7 +126,7 @@ class TestFromToml:
 
         conf = Config.from_toml(str(config_file))
 
-        assert conf.database_url == "postgresql://localhost/test"
+        assert conf.dsn == "postgresql://localhost/test"
         assert conf.queues == {"default": 10, "mailers": 5}
         assert conf.pool_min_size == 2
         assert conf.scheduler == {"timezone": "America/New_York"}
@@ -138,7 +138,7 @@ class TestFromToml:
         config_file.write_text(
             dedent(
                 """
-                database_url = "postgresql://localhost/test"
+                dsn = "postgresql://localhost/test"
 
                 [queues]
                 default = 10
@@ -148,7 +148,7 @@ class TestFromToml:
 
         conf = Config.from_toml()
 
-        assert conf.database_url == "postgresql://localhost/test"
+        assert conf.dsn == "postgresql://localhost/test"
         assert conf.queues == {"default": 10}
 
     def test_from_toml_returns_empty_config_when_no_file(self, tmp_path, monkeypatch):
@@ -156,5 +156,5 @@ class TestFromToml:
 
         conf = Config.from_toml()
 
-        assert conf.database_url is None
+        assert conf.dsn is None
         assert conf.queues == {}
