@@ -1,10 +1,8 @@
 from __future__ import annotations
 
-from contextlib import asynccontextmanager
-from typing import TYPE_CHECKING, Any, AsyncIterator, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
-    from psycopg import AsyncConnection
     from psycopg_pool import AsyncConnectionPool
 
 
@@ -21,7 +19,7 @@ class Driver(Protocol):
         ...
 
     @property
-    def conninfo(self) -> str:
+    def dsn(self) -> str:
         """Return the connection string for creating new connections.
 
         Returns:
@@ -38,40 +36,17 @@ class PsycopgPoolDriver:
         return self._pool.connection()
 
     @property
-    def conninfo(self) -> str:
+    def dsn(self) -> str:
         return self._pool.conninfo
 
 
-class PsycopgConnDriver:
-    def __init__(self, conn: AsyncConnection) -> None:
-        self._conn = conn
-
-    @asynccontextmanager
-    async def connection(self) -> AsyncIterator[AsyncConnection]:
-        yield self._conn
-
-    @property
-    def conninfo(self) -> str:
-        return self._conn.info.dsn
-
-
-def wrap_conn(conn_or_pool: Any) -> Driver:
+def wrap_pool(pool: Any) -> Driver:
     try:
         from psycopg_pool import AsyncConnectionPool
 
-        if isinstance(conn_or_pool, AsyncConnectionPool):
-            return PsycopgPoolDriver(conn_or_pool)
+        if isinstance(pool, AsyncConnectionPool):
+            return PsycopgPoolDriver(pool)
     except ImportError:
         pass
 
-    try:
-        from psycopg import AsyncConnection
-
-        if isinstance(conn_or_pool, AsyncConnection):
-            return PsycopgConnDriver(conn_or_pool)
-    except ImportError:
-        pass
-
-    raise TypeError(
-        f"Unsupported connection or pool provided: {type(conn_or_pool).__name__}"
-    )
+    raise TypeError(f"Unsupported pool provided: {type(pool).__name__}")

@@ -38,8 +38,10 @@ async def test_database(request):
         if not exists:
             conn.execute(f'CREATE DATABASE "{dbname}"')
 
-            async with await psycopg.AsyncConnection.connect(db_url) as conn:
-                await install(conn)
+            async with AsyncConnectionPool(
+                conninfo=db_url, max_size=1, open=False
+            ) as pool:
+                await install(pool)
 
     yield db_url
 
@@ -57,7 +59,7 @@ async def oban_instance(request, test_database):
     instances = []
 
     def _create_instance(**overrides):
-        params = {"conn": pool, "leadership": False, "stager": {"interval": 0.01}}
+        params = {"pool": pool, "leadership": False, "stager": {"interval": 0.01}}
         oban = Oban(**{**params, **mark_kwargs, **overrides})
 
         instances.append(oban)

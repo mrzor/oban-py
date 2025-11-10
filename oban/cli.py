@@ -290,9 +290,7 @@ def _load_conf(conf_path: str | None, params: Any) -> Config:
     all_conf = tml_conf.merge(env_conf).merge(cli_conf)
 
     if not all_conf.dsn:
-        raise click.UsageError(
-            "--dsn, OBAN_DSN, or dsn in oban.toml required"
-        )
+        raise click.UsageError("--dsn, OBAN_DSN, or dsn in oban.toml required")
 
     return all_conf
 

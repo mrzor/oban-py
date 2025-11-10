@@ -16,7 +16,7 @@ class Leader:
     This class is managed internally by Oban and shouldn't be constructed directly.
     Instead, check leadership status via the Oban.is_leader property:
 
-        >>> async with Oban(conn=conn, queues={"default": 10}) as oban:
+        >>> async with Oban(pool=pool, queues={"default": 10}) as oban:
         ...     if oban.is_leader:
         ...         # Perform leader-only operations
     """

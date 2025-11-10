@@ -11,7 +11,7 @@ from typing import Any
 from psycopg.rows import class_row
 from psycopg.types.json import Jsonb
 
-from ._driver import wrap_conn
+from ._driver import wrap_pool
 from ._executor import AckAction
 from .job import Job, TIMESTAMP_FIELDS
 
@@ -82,8 +82,8 @@ class Query:
 
         return value
 
-    def __init__(self, conn: Any, prefix: str = "public") -> None:
-        self._driver = wrap_conn(conn)
+    def __init__(self, pool: Any, prefix: str = "public") -> None:
+        self._driver = wrap_pool(pool)
         self._prefix = prefix
 
     # Jobs

@@ -26,7 +26,7 @@ class Oban:
     def __init__(
         self,
         *,
-        conn: Any,
+        pool: Any,
         leadership: bool | None = None,
         lifeline: dict[str, Any] = {},
         name: str | None = None,
@@ -49,7 +49,7 @@ class Oban:
           Leadership is disabled by default.
 
         Args:
-            conn: Database connection or pool (e.g., AsyncConnection or AsyncConnectionPool)
+            pool: Database connection pool (e.g., AsyncConnectionPool)
             leadership: Enable leadership election (default: True if queues configured, False otherwise)
             lifeline: Lifeline config options: interval (default: 60.0)
             name: Name for this instance in the registry (default: "oban")
@@ -71,7 +71,7 @@ class Oban:
         self._name = name or "oban"
         self._node = node or socket.gethostname()
         self._prefix = prefix or "public"
-        self._query = Query(conn, self._prefix)
+        self._query = Query(pool, self._prefix)
 
         self._notifier = notifier or PostgresNotifier(
             query=self._query, prefix=self._prefix
@@ -147,7 +147,7 @@ class Oban:
         whether this instance is acting as leader.
 
         Example:
-            >>> async with Oban(conn=conn, leadership=true) as conn:
+            >>> async with Oban(pool=pool, leadership=True) as oban:
             ...     if oban.is_leader:
             ...         # Perform leader-only operation
         """

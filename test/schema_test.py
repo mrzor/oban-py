@@ -3,8 +3,7 @@ import pytest
 import pytest_asyncio
 import psycopg
 
-from psycopg import AsyncConnection
-
+from oban.config import Config
 from oban.schema import install_sql, install, uninstall_sql, uninstall
 
 DB_URL_BASE = os.getenv("DB_URL_BASE", "postgresql://postgres@localhost")
@@ -14,15 +13,16 @@ def postgres_conn():
     return psycopg.connect(f"{DB_URL_BASE}/postgres", autocommit=True)
 
 
-async def list_tables(conn, prefix="public"):
-    result = await conn.execute(
-        f"""SELECT table_name FROM information_schema.tables
-        WHERE table_schema = '{prefix}'
-        ORDER BY table_name
-        """
-    )
+async def list_tables(pool, prefix="public"):
+    async with pool.connection() as conn:
+        result = await conn.execute(
+            f"""SELECT table_name FROM information_schema.tables
+            WHERE table_schema = '{prefix}'
+            ORDER BY table_name
+            """
+        )
 
-    return [row[0] for row in await result.fetchall()]
+        return [row[0] for row in await result.fetchall()]
 
 
 @pytest_asyncio.fixture
@@ -33,8 +33,14 @@ async def isolated_db():
         conn.execute(f'DROP DATABASE IF EXISTS "{test_db}"')
         conn.execute(f'CREATE DATABASE "{test_db}"')
 
-    async with await AsyncConnection.connect(f"{DB_URL_BASE}/{test_db}") as conn:
-        yield conn
+    dsn = f"{DB_URL_BASE}/{test_db}"
+
+    pool = await Config(dsn=dsn, pool_min_size=1, pool_max_size=2).create_pool()
+
+    try:
+        yield pool
+    finally:
+        await pool.close()
 
     with postgres_conn() as conn:
         conn.execute(f'DROP DATABASE IF EXISTS "{test_db}"')
@@ -85,7 +91,8 @@ class TestInstall:
 
     @pytest.mark.asyncio
     async def test_creates_schema_in_database_using_prefix(self, isolated_db):
-        await isolated_db.execute("CREATE SCHEMA IF NOT EXISTS isolated")
+        async with isolated_db.connection() as conn:
+            await conn.execute("CREATE SCHEMA IF NOT EXISTS isolated")
 
         await install(isolated_db, prefix="isolated")
 

@@ -127,6 +127,7 @@ class Config:
         )
 
         await pool.open()
+        await pool.wait()
 
         return pool
 
@@ -134,7 +135,7 @@ class Config:
         pool = pool or await self.create_pool()
 
         params: dict[str, Any] = {
-            "conn": pool,
+            "pool": pool,
             "name": self.name,
             "prefix": self.prefix,
             "queues": self.queues,
