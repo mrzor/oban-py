@@ -1,4 +1,3 @@
-import os
 import pytest
 import pytest_asyncio
 import psycopg
@@ -6,11 +5,13 @@ import psycopg
 from oban.config import Config
 from oban.schema import install_sql, install, uninstall_sql, uninstall
 
-DB_URL_BASE = os.getenv("DB_URL_BASE", "postgresql://postgres@localhost")
 
+@pytest.fixture
+def postgres_conn(dsn_base):
+    def _conn():
+        return psycopg.connect(f"{dsn_base}/postgres", autocommit=True)
 
-def postgres_conn():
-    return psycopg.connect(f"{DB_URL_BASE}/postgres", autocommit=True)
+    return _conn
 
 
 async def list_tables(pool, prefix="public"):
@@ -26,14 +27,14 @@ async def list_tables(pool, prefix="public"):
 
 
 @pytest_asyncio.fixture
-async def isolated_db():
+async def isolated_db(postgres_conn, dsn_base):
     test_db = "oban_schema_test_temp"
 
     with postgres_conn() as conn:
         conn.execute(f'DROP DATABASE IF EXISTS "{test_db}"')
         conn.execute(f'CREATE DATABASE "{test_db}"')
 
-    dsn = f"{DB_URL_BASE}/{test_db}"
+    dsn = f"{dsn_base}/{test_db}"
 
     pool = await Config(dsn=dsn, pool_min_size=1, pool_max_size=2).create_pool()
 

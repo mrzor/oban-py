@@ -9,16 +9,19 @@ from oban.config import Config
 from oban.schema import install
 from oban.testing import reset_oban
 
-DB_URL_BASE = os.getenv("DB_URL_BASE", "postgresql://postgres@localhost")
-
 
 @pytest.fixture(scope="session")
 def event_loop_policy():
     return uvloop.EventLoopPolicy()
 
 
+@pytest.fixture(scope="session")
+def dsn_base():
+    return os.getenv("DSN_BASE", "postgresql://postgres@localhost")
+
+
 @pytest_asyncio.fixture(scope="session")
-async def test_database(request):
+async def test_dsn(request, dsn_base):
     worker_id = getattr(request.config, "workerinput", {}).get("workerid", "master")
 
     if worker_id == "master":
@@ -26,29 +29,29 @@ async def test_database(request):
     else:
         worker_idx = int(worker_id.replace("gw", ""))
 
-    dbname = f"oban_py_test_{worker_idx}"
-    db_url = f"{DB_URL_BASE}/{dbname}"
+    dbn = f"oban_py_test_{worker_idx}"
+    dsn = f"{dsn_base}/{dbn}"
 
-    with psycopg.connect(f"{DB_URL_BASE}/postgres", autocommit=True) as conn:
+    with psycopg.connect(f"{dsn_base}/postgres", autocommit=True) as conn:
         exists = conn.execute(
-            "SELECT 1 FROM pg_database WHERE datname = %s", (dbname,)
+            "SELECT 1 FROM pg_database WHERE datname = %s", (dbn,)
         ).fetchone()
 
         if not exists:
-            conn.execute(f'CREATE DATABASE "{dbname}"')
+            conn.execute(f'CREATE DATABASE "{dbn}"')
 
-            async with Config(dsn=db_url, pool_max_size=1).create_pool() as pool:
+            async with Config(dsn=dsn, pool_max_size=1).create_pool() as pool:
                 await install(pool)
 
-    yield db_url
+    yield dsn
 
 
 @pytest_asyncio.fixture
-async def oban_instance(request, test_database):
+async def oban_instance(request, test_dsn):
     mark = request.node.get_closest_marker("oban")
     mark_kwargs = mark.kwargs if mark else {}
 
-    pool = await Config(dsn=test_database, pool_min_size=2, pool_max_size=10).create_pool()
+    pool = await Config(dsn=test_dsn, pool_min_size=2, pool_max_size=10).create_pool()
 
     instances = []
 

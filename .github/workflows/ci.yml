@@ -69,5 +69,5 @@ jobs:
 
       - name: Run tests
         env:
-          DB_URL_BASE: postgresql://postgres:postgres@localhost:5432
+          DSN_BASE: postgresql://postgres:postgres@localhost:5432
         run: uv run pytest
