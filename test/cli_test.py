@@ -1,5 +1,6 @@
 import psycopg
 import pytest
+from textwrap import dedent
 from click.testing import CliRunner
 
 from oban.cli import main
@@ -65,7 +66,39 @@ class TestStartCommand:
 
         result = runner.invoke(
             main,
-            ["start", "--dsn", dsn, "--queues", "default:10", "--help"],
+            ["start", "--dsn", dsn, "--queues", "default:10", "--dry-run"],
+        )
+
+        assert result.exit_code == 0
+
+    def test_start_with_cron_modules(self, runner, dsn):
+        runner.invoke(main, ["install", "--dsn", dsn])
+
+        result = runner.invoke(
+            main,
+            ["start", "--dsn", dsn, "--cron-modules", "os,sys", "--dry-run"],
+        )
+
+        assert result.exit_code == 0
+
+    def test_start_with_cron_paths(self, runner, dsn, tmp_path, monkeypatch):
+        runner.invoke(main, ["install", "--dsn", dsn])
+
+        worker_file = tmp_path / "test_worker.py"
+        worker_file.write_text(dedent("""
+            from oban import worker
+
+            @worker(cron="@daily")
+            class DailyWorker:
+                async def process(self, job):
+                    pass
+        """))
+
+        monkeypatch.chdir(tmp_path)
+
+        result = runner.invoke(
+            main,
+            ["start", "--dsn", dsn, "--cron-paths", "*.py", "--dry-run"],
         )
 
         assert result.exit_code == 0

@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import asyncio
+import importlib
 import logging
+import os
 import signal
 import socket
+import subprocess
 import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -31,6 +34,91 @@ logging.basicConfig(
 )
 
 logger = logging.getLogger("oban.cli")
+
+
+def _file_to_module(file_path: str) -> str | None:
+    root = Path(os.getcwd())
+    path = Path(file_path)
+
+    try:
+        rel_path = path.relative_to(root)
+    except ValueError:
+        return None
+
+    parts = list(rel_path.parts)
+
+    if parts[-1].endswith(".py"):
+        parts[-1] = parts[-1][:-3]
+
+    if parts[-1] == "__init__":
+        parts.pop()
+
+    return ".".join(parts)
+
+
+def _import_cron_modules(module_paths: list[str]) -> int:
+    def safe_import(path: str) -> bool:
+        try:
+            importlib.import_module(path)
+            return True
+        except Exception as error:
+            logger.error(f"Failed to import cron module at {path}: {error}")
+
+            return False
+
+    return sum([safe_import(path) for path in module_paths])
+
+
+def _import_cron_paths(paths: list[str]) -> list[str]:
+    root = Path(os.getcwd())
+    grep = ["grep", "-rl", "--include=*.py", r"@worker.*cron\|@job.*cron"]
+
+    found = []
+    for pattern in [str(root / path) for path in paths]:
+        result = subprocess.run(
+            [*grep, pattern],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+        if result.returncode == 0:
+            files = [
+                line.strip()
+                for line in result.stdout.strip().split("\n")
+                if line.strip()
+            ]
+            found.extend(files)
+
+    files = set(str(Path(file).resolve()) for file in found)
+
+    return [mod for file in files if (mod := _file_to_module(file))]
+
+
+def _split_csv(value: str | None) -> list[str] | None:
+    return [item.strip() for item in value.split(",")] if value else None
+
+
+def _find_and_load_cron_modules(
+    cron_modules: list[str] | None = None, cron_paths: list[str] | None = None
+) -> None:
+    if cron_modules:
+        logger.info(f"Importing {len(cron_modules)} cron modules...")
+
+    elif cron_paths:
+        logger.info(f"Discovering cron workers in {', '.join(cron_paths)}...")
+
+        cron_modules = _import_cron_paths(cron_paths)
+    else:
+        logger.info("Auto-discovering cron workers in current directory...")
+
+        cron_modules = _import_cron_paths([os.getcwd()])
+
+    import_count = _import_cron_modules(cron_modules)
+
+    logger.info(
+        f"Successfully imported {import_count}/{len(cron_modules)} cron modules"
+    )
 
 
 def print_banner(version: str) -> None:
@@ -207,7 +295,29 @@ def uninstall(dsn: str | None, prefix: str) -> None:
     default="INFO",
     help="Logging level (default: INFO)",
 )
-def start(log_level: str, config: str | None, **params: Any) -> None:
+@click.option(
+    "--cron-modules",
+    envvar="OBAN_CRON_MODULES",
+    help="Comma-separated list of module paths with cron workers (e.g., 'myapp.workers,myapp.jobs')",
+)
+@click.option(
+    "--cron-paths",
+    envvar="OBAN_CRON_PATHS",
+    help="Comma-separated list of file patterns to search for cron workers (e.g., 'myapp/workers/**/*.py')",
+)
+@click.option(
+    "--dry-run",
+    is_flag=True,
+    help="Validate configuration and load cron modules without starting Oban",
+)
+def start(
+    log_level: str,
+    config: str | None,
+    cron_modules: str | None,
+    cron_paths: str | None,
+    dry_run: bool,
+    **params: Any,
+) -> None:
     """Start the Oban worker process.
 
     This command starts an Oban instance that processes jobs from the configured queues.
@@ -234,6 +344,16 @@ def start(log_level: str, config: str | None, **params: Any) -> None:
 
     conf = _load_conf(config, params)
     node = conf.node or socket.gethostname()
+
+    _find_and_load_cron_modules(
+        cron_modules=_split_csv(cron_modules),
+        cron_paths=_split_csv(cron_paths),
+    )
+
+    if dry_run:
+        logger.info("Dry run complete!")
+
+        return
 
     async def run() -> None:
         print_banner(__version__)

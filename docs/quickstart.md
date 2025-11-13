@@ -93,6 +93,53 @@ await send_email.enqueue(
 )
 ```
 
+## Periodic Jobs (Cron)
+
+Define workers that run on a schedule using the `cron` parameter:
+
+```python
+from oban import worker
+
+@worker(queue="maintenance", cron="@daily")
+class DailyCleanup:
+    async def process(self, job):
+        print("Running daily cleanup...")
+
+@worker(queue="reports", cron="0 9 * * MON-FRI")
+class BusinessHoursReport:
+    async def process(self, job):
+        print("Generating report during business hours...")
+```
+
+Cron expressions support:
+- Standard cron syntax: `"0 * * * *"` (every hour)
+- Nicknames: `@hourly`, `@daily`, `@weekly`, `@monthly`, `@yearly`
+- Month/day aliases: `MON-FRI`, `JAN`, `DEC`
+
+### Import-Safe Workers
+
+When using CLI auto-discovery, ensure your workers are **import-safe**:
+
+**Good** - Defer initialization to `process()`:
+```python
+@worker(cron="@hourly")
+class DataSync:
+    async def process(self, job):
+        api_client = APIClient()  # Initialize here
+        await api_client.sync()
+```
+
+**Bad** - Side effects at module level:
+```python
+# This runs on import, even in CLI!
+API_CLIENT = APIClient()  # ❌ Avoid this
+
+@worker(cron="@hourly")
+class DataSync:
+    async def process(self, job):
+        await API_CLIENT.sync()
+```
+
 ## Running Workers
 
 ### Using the CLI
@@ -100,7 +147,31 @@ await send_email.enqueue(
 Start the Oban worker process:
 
 ```bash
-oban run --dsn "postgresql://user:password@localhost/mydb"
+oban start --dsn "postgresql://user:password@localhost/mydb"
+```
+
+#### Cron Auto-Discovery
+
+The CLI automatically discovers and loads cron workers in three modes:
+
+**Full Auto** (discovers all `@worker(cron=...)` in current directory):
+```bash
+oban start --dsn "postgresql://..."
+```
+
+**Semi-Auto** (discovers cron workers in specific paths):
+```bash
+oban start --dsn "postgresql://..." --cron-paths "myapp/workers/**/*.py,myapp/jobs/*.py"
+```
+
+**Manual** (explicitly specify modules to import):
+```bash
+oban start --dsn "postgresql://..." --cron-modules "myapp.workers,myapp.jobs.cleanup"
+```
+
+**Validate without starting**:
+```bash
+oban start --dsn "postgresql://..." --dry-run
 ```
 
 ### Programmatically
