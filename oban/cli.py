@@ -345,20 +345,19 @@ def start(
     conf = _load_conf(config, params)
     node = conf.node or socket.gethostname()
 
-    _find_and_load_cron_modules(
-        cron_modules=_split_csv(cron_modules),
-        cron_paths=_split_csv(cron_paths),
-    )
-
-    if dry_run:
-        logger.info("Dry run complete!")
-
-        return
-
     async def run() -> None:
         print_banner(__version__)
 
         logger.info(f"Starting Oban v{__version__} on node {node}...")
+
+        _find_and_load_cron_modules(
+            cron_modules=_split_csv(cron_modules),
+            cron_paths=_split_csv(cron_paths),
+        )
+
+        if dry_run:
+            logger.info("Dry run complete-configuration is valid!")
+            sys.exit(0)
 
         try:
             pool = await conf.create_pool()

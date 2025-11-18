@@ -85,14 +85,16 @@ class TestStartCommand:
         runner.invoke(main, ["install", "--dsn", dsn])
 
         worker_file = tmp_path / "test_worker.py"
-        worker_file.write_text(dedent("""
+        worker_file.write_text(
+            dedent("""
             from oban import worker
 
             @worker(cron="@daily")
             class DailyWorker:
                 async def process(self, job):
                     pass
-        """))
+        """)
+        )
 
         monkeypatch.chdir(tmp_path)
 
