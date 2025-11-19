@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
-from typing import Literal, NotRequired, TypedDict, TypeVar
+from typing import TypedDict, TypeVar
 
 T = TypeVar("T")
 
@@ -96,9 +96,9 @@ class UniqueOptions(TypedDict, total=False):
     Uniqueness prevents duplicate jobs from being enqueued based on the specified
     criteria. Jobs are considered duplicates if they match on the configured fields
     within the specified period and states.
-    
+
     All fields are optional and have sensible defaults applied when not specified.
-    
+
     Attributes:
         period: Time window in seconds to check for duplicates. Use None for unlimited,
                 the default
@@ -108,14 +108,14 @@ class UniqueOptions(TypedDict, total=False):
               these keys are compared instead of the full args/meta dicts. Defaults
               to None (check all keys).
         group: Which job states to check for duplicates. Defaults to "all".
-    
+
     Examples:
         Simple uniqueness with defaults (infinite period, all states):
             unique=True
-    
+
         Prevent duplicate jobs with same args in a 5 minute window:
             unique={"period": 300}
-    
+
         Only check specific arg keys:
             unique={"period": 60, "fields": ["args"], "keys": ["user_id"]}
     """
