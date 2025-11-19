@@ -31,7 +31,7 @@ GROUP_TO_INTS = {
 
 
 def with_uniq_meta(job: Job) -> Job:
-    if not isinstance(job.unique, dict):
+    if not job.unique:
         return job
 
     uniq_meta = {"uniq": True, "uniq_bmp": _gen_bmp(job), "uniq_key": _gen_key(job)}
@@ -42,14 +42,19 @@ def with_uniq_meta(job: Job) -> Job:
 
 
 def _gen_bmp(job: Job) -> list[int]:
+    if not job.unique:
+        raise RuntimeError("Unique required")
+
     return GROUP_TO_INTS.get(job.unique["group"], [])
 
 
 def _gen_key(job: Job) -> str:
-    unique = job.unique
-    fields = unique["fields"]
-    keys = unique["keys"]
-    period = unique["period"]
+    if not job.unique:
+        raise RuntimeError("Unique required")
+
+    fields = job.unique["fields"]
+    keys = job.unique["keys"]
+    period = job.unique["period"]
 
     data = []
     for field in sorted(fields):

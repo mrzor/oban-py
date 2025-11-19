@@ -11,6 +11,21 @@ CREATE TYPE oban_job_state AS ENUM (
     'cancelled'
 );
 
+-- Functions
+
+CREATE OR REPLACE FUNCTION oban_state_to_bit(state oban_job_state)
+RETURNS jsonb AS $$
+SELECT CASE
+       WHEN state = 'scheduled' THEN '0'::jsonb
+       WHEN state = 'available' THEN '1'::jsonb
+       WHEN state = 'executing' THEN '2'::jsonb
+       WHEN state = 'retryable' THEN '3'::jsonb
+       WHEN state = 'completed' THEN '4'::jsonb
+       WHEN state = 'cancelled' THEN '5'::jsonb
+       WHEN state = 'discarded' THEN '6'::jsonb
+       END;
+$$ LANGUAGE SQL IMMUTABLE STRICT;
+
 -- Tables
 
 CREATE TABLE oban_jobs (
@@ -26,6 +41,7 @@ CREATE TABLE oban_jobs (
     tags jsonb NOT NULL DEFAULT '[]',
     errors jsonb NOT NULL DEFAULT '[]',
     attempted_by text[] NOT NULL DEFAULT ARRAY[]::TEXT[],
+    uniq_key text GENERATED ALWAYS AS (CASE WHEN meta->'uniq_bmp' @> oban_state_to_bit(state) THEN meta->>'uniq_key' END) STORED,
     inserted_at timestamp WITHOUT TIME ZONE NOT NULL DEFAULT timezone('UTC', now()),
     scheduled_at timestamp WITHOUT TIME ZONE NOT NULL DEFAULT timezone('UTC', now()),
     attempted_at timestamp WITHOUT TIME ZONE,
@@ -80,6 +96,10 @@ WHERE state = 'cancelled';
 CREATE INDEX oban_jobs_discarded_at_index
 ON oban_jobs (discarded_at)
 WHERE state = 'discarded';
+
+CREATE UNIQUE INDEX oban_jobs_unique_index
+ON oban_jobs (uniq_key)
+WHERE uniq_key IS NOT NULL;
 
 -- Autovacuum
 

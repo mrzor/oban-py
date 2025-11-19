@@ -7,7 +7,8 @@ from typing import Any
 
 import orjson
 
-from .types import JobState, UniqueField, UniqueGroup, UniqueOptions
+from .types import JobState, UniqueField, UniqueGroup
+from ._unique import with_uniq_meta
 
 TIMESTAMP_FIELDS = [
     "inserted_at",
@@ -53,7 +54,7 @@ class Job:
 
     # Virtual
     conflicted: bool = False
-    unique: bool | UniqueOptions | None = None
+    unique: dict[str, Any] | None = None
     _cancellation: asyncio.Event | None = field(default=None, init=False, repr=False)
 
     @staticmethod
@@ -144,7 +145,7 @@ class Job:
         job._normalize_unique()
         job._validate()
 
-        return job
+        return with_uniq_meta(job)
 
     def update(self, changes: dict[str, Any]) -> Job:
         """Update this job with the given changes, applying validation and normalization.
@@ -228,10 +229,12 @@ class Job:
         if not (0 <= self.priority <= 9):
             raise ValueError("priority must be between 0 and 9")
 
-        if isinstance(self.unique, dict):
-            self._validate_unique()
+        self._validate_unique()
 
     def _validate_unique(self) -> None:
+        if not isinstance(self.unique, dict):
+            return
+
         if fields := self.unique.get("fields", None):
             if invalid := set(fields) - UNIQUE_FIELDS:
                 raise ValueError(f"invalid unique fields: {invalid}")

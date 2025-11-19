@@ -40,8 +40,8 @@ async def test_dsn(request, dsn_base):
         if not exists:
             conn.execute(f'CREATE DATABASE "{dbn}"')
 
-            async with Config(dsn=dsn, pool_max_size=1).create_pool() as pool:
-                await install(pool)
+            pool = await Config(dsn=dsn, pool_max_size=1).create_pool()
+            await install(pool)
 
     yield dsn
 

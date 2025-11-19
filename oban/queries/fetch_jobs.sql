@@ -24,4 +24,21 @@ FROM
 WHERE
   oj.id = locked_jobs.id
 RETURNING
-  oj.*
+  oj.id,
+  oj.state,
+  oj.queue,
+  oj.worker,
+  oj.attempt,
+  oj.max_attempts,
+  oj.priority,
+  oj.args,
+  oj.meta,
+  oj.errors,
+  oj.tags,
+  oj.attempted_by,
+  oj.inserted_at,
+  oj.attempted_at,
+  oj.cancelled_at,
+  oj.completed_at,
+  oj.discarded_at,
+  oj.scheduled_at

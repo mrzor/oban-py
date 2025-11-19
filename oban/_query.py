@@ -62,7 +62,7 @@ class Query:
 
         if apply_prefix:
             return re.sub(
-                r"\b(oban_jobs|oban_leaders|oban_producers|oban_job_state)\b",
+                r"\b(oban_jobs|oban_leaders|oban_producers|oban_job_state|oban_state_to_bit)\b",
                 rf"{prefix}.\1",
                 sql,
             )
@@ -160,15 +160,26 @@ class Query:
         async with self._driver.connection() as conn:
             stmt = self._load_file("insert_jobs.sql", self._prefix)
             args = defaultdict(list)
+            seen = set([])
+            dupes = []
 
             for job in jobs:
+                uniq_key = job.meta.get("uniq_key", None)
+
+                if uniq_key and uniq_key in seen:
+                    dupes.append(replace(job, conflicted=True))
+
+                    continue
+                elif uniq_key:
+                    seen.add(uniq_key)
+
                 for key in INSERTABLE_FIELDS:
                     args[key].append(self._cast_type(key, getattr(job, key)))
 
             result = await conn.execute(stmt, args)
             rows = await result.fetchall()
 
-            return [
+            inserted = [
                 replace(
                     job,
                     id=row[0],
@@ -176,9 +187,12 @@ class Query:
                     queue=row[2],
                     scheduled_at=row[3],
                     state=row[4],
+                    conflicted=row[5],
                 )
                 for job, row in zip(jobs, rows)
             ]
+
+            return inserted + dupes
 
     async def prune_jobs(self, max_age: int, limit: int) -> int:
         async with self._driver.connection() as conn:
