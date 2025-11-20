@@ -41,6 +41,7 @@ async def test_dsn(request, dsn_base):
             conn.execute(f'CREATE DATABASE "{dbn}"')
 
             pool = await Config(dsn=dsn, pool_max_size=1).create_pool()
+
             await install(pool)
 
     yield dsn
@@ -51,7 +52,7 @@ async def oban_instance(request, test_dsn):
     mark = request.node.get_closest_marker("oban")
     mark_kwargs = mark.kwargs if mark else {}
 
-    pool = await Config(dsn=test_dsn, pool_min_size=2, pool_max_size=10).create_pool()
+    pool = await Config(dsn=test_dsn, pool_min_size=2, pool_max_size=10, pool_timeout=1.0).create_pool()
 
     instances = []
 

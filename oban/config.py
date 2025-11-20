@@ -36,6 +36,7 @@ class Config:
     # Connection pool options
     pool_min_size: int = 1
     pool_max_size: int = 10
+    pool_timeout: float = 30.0
 
     @staticmethod
     def _parse_queues(input: str) -> dict[str, int]:
@@ -123,6 +124,7 @@ class Config:
             conninfo=self.dsn,
             min_size=self.pool_min_size,
             max_size=self.pool_max_size,
+            timeout=self.pool_timeout,
             open=False,
         )
 
