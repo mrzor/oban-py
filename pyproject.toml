@@ -36,7 +36,7 @@ docs = [
 package = true
 
 [tool.ty.src]
-exclude = ["test"]
+exclude = ["test", "examples"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
