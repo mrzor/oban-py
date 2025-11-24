@@ -3,11 +3,8 @@ API Reference
 
 This page contains auto-generated API documentation for Oban.
 
-Core Classes
-------------
-
 Oban
-~~~~
+----
 
 .. autoclass:: oban.Oban
    :members:
@@ -15,7 +12,7 @@ Oban
    :show-inheritance:
 
 Job
-~~~
+---
 
 .. autoclass:: oban.Job
    :members:
