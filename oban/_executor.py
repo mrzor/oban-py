@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 from . import telemetry
 from ._backoff import jittery_clamped
 from ._worker import resolve_worker
-from .types import Cancel, Snooze
+from .job import Cancel, Snooze
 
 if TYPE_CHECKING:
     from .job import Job

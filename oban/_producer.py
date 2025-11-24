@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 from uuid import uuid4
@@ -10,13 +10,35 @@ from uuid import uuid4
 from . import telemetry
 from ._executor import Executor
 from .job import Job
-from .types import QueueInfo
-
-logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from ._notifier import Notifier
     from ._query import Query
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True, slots=True)
+class QueueInfo:
+    """Information about a queue's runtime state."""
+
+    limit: int
+    """The concurrency limit for this queue."""
+
+    node: str
+    """The node name where this queue is running."""
+
+    paused: bool
+    """Whether the queue is currently paused."""
+
+    queue: str
+    """The queue name."""
+
+    running: list[int]
+    """List of currently executing job IDs."""
+
+    started_at: datetime | None
+    """When the queue was started."""
 
 
 class Producer:

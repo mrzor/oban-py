@@ -1,14 +1,95 @@
+"""Job dataclass representing a unit of work to be processed.
+
+Jobs hold all the information needed to execute a task: the worker to run, arguments
+to pass, scheduling options, and metadata for tracking execution state.
+"""
+
 from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta, timezone
-from typing import Any
+from enum import StrEnum
+from typing import Any, TypedDict, TypeVar
 
 import orjson
 
-from .types import JobState, UniqueField, UniqueGroup
 from ._unique import with_uniq_meta
+
+
+class JobState(StrEnum):
+    """Lifecycle state of a job.
+
+    - AVAILABLE: Ready to be executed
+    - CANCELLED: Explicitly cancelled
+    - COMPLETED: Successfully finished
+    - DISCARDED: Exceeded max attempts
+    - EXECUTING: Currently running
+    - RETRYABLE: Failed but will be retried
+    - SCHEDULED: Scheduled to run in the future
+    """
+
+    AVAILABLE = "available"
+    CANCELLED = "cancelled"
+    COMPLETED = "completed"
+    DISCARDED = "discarded"
+    EXECUTING = "executing"
+    RETRYABLE = "retryable"
+    SCHEDULED = "scheduled"
+
+
+class UniqueField(StrEnum):
+    """Fields used to determine job uniqueness.
+
+    - ARGS: The job's arguments
+    - META: The job's metadata
+    - QUEUE: The queue name
+    - WORKER: The worker class name
+    """
+
+    ARGS = "args"
+    META = "meta"
+    QUEUE = "queue"
+    WORKER = "worker"
+
+
+class UniqueGroup(StrEnum):
+    """State groups to check when evaluating uniqueness.
+
+    - ALL: Check against jobs in any state
+    - INCOMPLETE: Check against available, scheduled, executing, and retryable jobs
+    - SCHEDULED: Check against only scheduled jobs
+    - SUCCESSFUL: Check against incomplete and completed jobs
+    """
+
+    ALL = "all"
+    INCOMPLETE = "incomplete"
+    SCHEDULED = "scheduled"
+    SUCCESSFUL = "successful"
+
+
+class UniqueOptions(TypedDict, total=False):
+    """Options for controlling job uniqueness.
+
+    Uniqueness prevents duplicate jobs from being enqueued based on the specified
+    criteria. Jobs are considered duplicates if they match on the configured fields
+    within the specified period and states.
+
+    Example:
+        Prevent duplicate jobs with same args in a 5 minute window:
+
+        >>> unique={"period": 300}
+
+        Only check specific arg keys:
+
+        >>> unique={"period": 60, "fields": ["args"], "keys": ["user_id"]}
+    """
+
+    fields: list[UniqueField]
+    group: UniqueGroup
+    keys: list[str] | None
+    period: int | None
+
 
 TIMESTAMP_FIELDS = [
     "inserted_at",
@@ -109,10 +190,9 @@ class Job:
                 - max_attempts: Maximum retry attempts (default: 20)
                 - scheduled_at: When to run the job (default: now)
                 - schedule_in: Alternative to scheduled_at. Timedelta or seconds from now
-                - tags: List of tags for filtering/grouping
+                - tags: List of tags for grouping
                 - meta: Arbitrary metadata dictionary
-                - unique: Uniqueness constraints. Can be True (use defaults), a dict with
-                         options (period, fields, keys, group), or None (no uniqueness)
+                - unique: Uniqueness options, True (use defaults), a dict with options (period, fields, keys, group), or None (no uniqueness)
 
         Returns:
             A validated and normalized Job instance
@@ -250,3 +330,41 @@ class Job:
         if period := self.unique.get("period", None):
             if not isinstance(period, int):
                 raise ValueError(f"invalid unique period: {period}")
+
+
+T = TypeVar("T")
+
+
+@dataclass(frozen=True, slots=True)
+class Snooze:
+    """Reschedule a job to run again after a delay.
+
+    Return this from a worker's process method to put the job back in the queue
+    with a delayed scheduled_at time.
+
+    Example:
+        >>> async def process(self, job):
+        ...     if not ready_to_process():
+        ...         return Snooze(60)  # Try again in 60 seconds
+    """
+
+    seconds: int
+
+
+@dataclass(frozen=True, slots=True)
+class Cancel:
+    """Cancel a job and stop processing.
+
+    Return this from a worker's process method to mark the job as cancelled.
+    The reason is stored in the job's errors list.
+
+    Example:
+        >>> async def process(self, job):
+        ...     if job.cancelled():
+        ...         return Cancel("Job was cancelled by user")
+    """
+
+    reason: str
+
+
+type Result[T] = Snooze | Cancel | T | None

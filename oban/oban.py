@@ -1,18 +1,22 @@
+"""Core class for enqueueing and processing jobs.
+
+This module provides the Oban class for managing queues and processing jobs. Oban can
+run in client mode (enqueueing only) or server mode (enqueueing and processing).
+"""
+
 from __future__ import annotations
 
 import asyncio
 import socket
-
 from typing import Any, Callable
 
 from psycopg_pool import AsyncConnectionPool
 
 from .job import Job
-from .types import QueueInfo
 from ._leader import Leader
 from ._lifeline import Lifeline
 from ._notifier import Notifier, PostgresNotifier
-from ._producer import Producer
+from ._producer import Producer, QueueInfo
 from ._pruner import Pruner
 from ._query import Query
 from ._refresher import Refresher
@@ -207,23 +211,35 @@ class Oban:
         """
         return self._leader.is_leader
 
-    @property
-    def testing_mode(self) -> str | None:
-        """Get the current testing mode for this instance.
-
-        Returns the testing mode set via oban.testing.mode() context manager.
-
-        Returns:
-            The current testing mode "inline", "manual", or None
-        """
-        from .testing import _get_mode
-
-        return _get_mode()
-
     def _connection(self):
         return self._query._driver.connection()
 
     async def start(self) -> Oban:
+        """Start the Oban instance and begin processing jobs.
+
+        This starts all internal processes including the notifier, leader election,
+        job staging, scheduling, and queue producers. When queues are configured,
+        it also verifies that the required database tables exist.
+
+        Returns:
+            The started Oban instance for method chaining
+
+        Raises:
+            RuntimeError: If required database tables are missing (run migrations first)
+
+        Example:
+            For most use cases, prefer using Oban as an async context manager:
+
+            >>> async with Oban(pool=pool, queues={"default": 10}) as oban:
+            ...     await oban.enqueue(MyWorker.new({"id": 1}))
+
+            Use explicit start/stop for more control over the lifecycle:
+
+            >>> oban = Oban(pool=pool, queues={"default": 10})
+            >>> await oban.start()
+            >>> # ... application runs ...
+            >>> await oban.stop()
+        """
         if self._producers:
             await self._verify_structure()
 
@@ -249,6 +265,28 @@ class Oban:
         return self
 
     async def stop(self) -> None:
+        """Stop the Oban instance and gracefully shut down all processes.
+
+        This stops all internal processes including queue producers, the notifier,
+        leader election, and background tasks. Running jobs are allowed to complete
+        before producers fully stop.
+
+        Calling stop on an instance that was never started is safe and returns
+        immediately.
+
+        Example:
+            For most use cases, prefer using Oban as an async context manager:
+
+            >>> async with Oban(pool=pool, queues={"default": 10}) as oban:
+            ...     await oban.enqueue(MyWorker.new({"id": 1}))
+
+            Use explicit start/stop for more control over the lifecycle:
+
+            >>> oban = Oban(pool=pool, queues={"default": 10})
+            >>> await oban.start()
+            >>> # ... application runs ...
+            >>> await oban.stop()
+        """
         if not self._signal_token:
             return
 
@@ -279,7 +317,7 @@ class Oban:
                 )
 
     async def enqueue(self, job: Job) -> Job:
-        """Insert a job into the database for processing.
+        """Enqueue a job in the database for processing.
 
         Args:
             job: A Job instance created via Worker.new()
@@ -288,12 +326,9 @@ class Oban:
             The inserted job with database-assigned values (id, timestamps, state)
 
         Example:
-            >>> from myapp.oban import oban, EmailWorker
-            >>>
             >>> job = EmailWorker.new({"to": "user@example.com", "subject": "Welcome"})
             >>> await oban.enqueue(job)
 
-        Note:
             For convenience, you can also use Worker.enqueue() directly:
 
             >>> await EmailWorker.enqueue({"to": "user@example.com", "subject": "Welcome"})
@@ -315,15 +350,14 @@ class Oban:
             The inserted jobs with database-assigned values (id, timestamps, state)
 
         Example:
-            >>> from myapp.oban import oban, EmailWorker
-            >>>
             >>> job1 = EmailWorker.new({"to": "user1@example.com"})
             >>> job2 = EmailWorker.new({"to": "user2@example.com"})
             >>> job3 = EmailWorker.new({"to": "user3@example.com"})
-            >>>
             >>> await oban.enqueue_many(job1, job2, job3)
         """
-        if self.testing_mode == "inline":
+        from .testing import _get_mode
+
+        if _get_mode() == "inline":
             await self._execute_inline(jobs)
 
             return list(jobs)

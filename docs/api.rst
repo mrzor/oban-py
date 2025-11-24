@@ -30,22 +30,6 @@ Decorators
    :undoc-members:
    :show-inheritance:
 
-Configuration
--------------
-
-.. autoclass:: oban.config.Config
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-Types
------
-
-.. automodule:: oban.types
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
 Testing
 -------
 
@@ -62,8 +46,8 @@ Telemetry
    :undoc-members:
    :show-inheritance:
 
-Schema Management
------------------
+Schemas
+-------
 
 .. automodule:: oban.schema
    :members:

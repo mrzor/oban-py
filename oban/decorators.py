@@ -2,16 +2,16 @@
 Decorators for creating Oban workers and jobs.
 
 This module provides two decorators for making your code enqueueable:
-- @worker: For classes with a `process` method
-- @job: For wrapping functions as jobs
+
+- `@worker` For classes with a `process` method
+- `@job` For wrapping functions as jobs
 """
 
 import inspect
 from functools import wraps
 from typing import Any, Callable
 
-from .job import Job
-from .types import Result
+from .job import Job, Result
 from ._scheduler import register_scheduled
 from ._worker import register_worker, worker_name
 

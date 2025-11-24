@@ -1,9 +1,9 @@
 import asyncio
 import pytest
 
-from oban import job, worker
 from datetime import datetime, timedelta, timezone
 
+from oban import Cancel, Snooze, job, worker
 from oban.testing import (
     all_enqueued,
     assert_enqueued,
@@ -12,7 +12,6 @@ from oban.testing import (
     process_job,
     refute_enqueued,
 )
-from oban.types import Cancel, Snooze
 
 
 def future(**kwargs):
