@@ -15,6 +15,9 @@ observable, and loaded with enterprise grade features.
 installation
 quickstart
 defining_queues
+scheduling_jobs
+periodic_jobs
+unique_jobs
 api
 cli
 ```
