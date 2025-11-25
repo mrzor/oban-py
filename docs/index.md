@@ -10,14 +10,28 @@ observable, and loaded with enterprise grade features.
 
 ```{toctree}
 :maxdepth: 2
-:caption: Contents:
+:caption: Getting Started
 
 installation
 quickstart
+production
+```
+
+```{toctree}
+:maxdepth: 2
+:caption: Guides
+
 defining_queues
 scheduling_jobs
 periodic_jobs
 unique_jobs
+job_maintenance
+```
+
+```{toctree}
+:maxdepth: 2
+:caption: Reference
+
 api
 cli
 ```

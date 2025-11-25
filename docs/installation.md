@@ -23,9 +23,9 @@ dsn = "postgresql://user:password@localhost/mydb"
 
 ## Installing the Schema
 
-After the `oban` package and sub-dependencies are installed, you must install the necessary tables
-to your database. Installation can be done through the CLI, with a migration tool like Alembic, or
-programmatically.
+After the `oban` package and sub-dependencies are installed, you must install the necessary
+tables, indexes, and functions to your database. Installation can be done through the CLI, with a
+migration tool like Alembic, or programmatically.
 
 `````{tab-set}
 
