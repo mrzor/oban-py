@@ -211,3 +211,18 @@ To ensure a commit passes CI you should run `make ci`, or run these checks local
 * Check formatting (`uv run ruff format --check`)
 * Check types (`uv run ty check`)
 * Run tests (`uv run pytest`)
+
+### Building Documentation
+
+There are `make` commands available to help build and serve the documentation locally:
+
+```bash
+# Build HTML documentation
+make docs
+
+# Build and serve at http://localhost:8000
+make docs-serve
+
+# Clean built documentation
+make docs-clean
+```
