@@ -88,7 +88,7 @@ class Query:
 
     # Jobs
 
-    async def ack_jobs(self, acks: list[AckAction]) -> None:
+    async def ack_jobs(self, acks: list[AckAction]) -> list[int]:
         async with self._driver.connection() as conn:
             async with conn.transaction():
                 stmt = self._load_file("ack_jobs.sql", self._prefix)
@@ -101,7 +101,10 @@ class Query:
 
                     args[field] = values
 
-                await conn.execute(stmt, args)
+                result = await conn.execute(stmt, args)
+                rows = await result.fetchall()
+
+                return [row[0] for row in rows]
 
     async def all_jobs(self, states: list[str]) -> list[Job]:
         async with self._driver.connection() as conn:

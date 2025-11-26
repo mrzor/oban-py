@@ -10,7 +10,6 @@ locked AS (
   SELECT oj.id
   FROM oban_jobs oj
   INNER JOIN params tmp ON oj.id = tmp.id
-  WHERE oj.state = 'executing'
   FOR UPDATE OF oj
 )
 UPDATE oban_jobs oj
@@ -25,4 +24,5 @@ SET state = tmp.state,
 FROM params tmp
 INNER JOIN locked l ON tmp.id = l.id
 WHERE oj.id = tmp.id
+RETURNING oj.id
 

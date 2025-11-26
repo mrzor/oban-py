@@ -215,9 +215,12 @@ class Producer:
     async def _fetch_jobs(self, demand: int):
         with telemetry.span("oban.producer.fetch", {"queue": self._queue}) as context:
             if self._pending_acks:
-                await self._query.ack_jobs(self._pending_acks)
+                acked_ids = await self._query.ack_jobs(self._pending_acks)
+                acked_set = set(acked_ids)
 
-                self._pending_acks.clear()
+                self._pending_acks = [
+                    ack for ack in self._pending_acks if ack.id not in acked_set
+                ]
 
             jobs = await self._query.fetch_jobs(
                 demand=demand,
