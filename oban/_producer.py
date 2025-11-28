@@ -196,8 +196,6 @@ class Producer:
 
         jobs = await self._fetch_jobs(demand)
 
-        self._last_fetch_time = asyncio.get_event_loop().time()
-
         for job in jobs:
             task = asyncio.create_task(self._execute(job))
             task.add_done_callback(
@@ -207,10 +205,13 @@ class Producer:
             self._running_jobs[job.id] = (job, task)
 
     async def _debounce_fetch(self) -> None:
-        elapsed = asyncio.get_event_loop().time() - self._last_fetch_time
+        now = asyncio.get_event_loop().time()
+        elapsed = now - self._last_fetch_time
 
         if elapsed < self._debounce_interval:
             await asyncio.sleep(self._debounce_interval - elapsed)
+
+        self._last_fetch_time = asyncio.get_event_loop().time()
 
     async def _fetch_jobs(self, demand: int):
         with telemetry.span("oban.producer.fetch", {"queue": self._queue}) as context:
