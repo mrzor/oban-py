@@ -58,8 +58,13 @@ UPDATABLE_FIELDS = [
 class Query:
     @staticmethod
     @cache
-    def _load_file(path: str, prefix: str = "public", apply_prefix: bool = True) -> str:
-        sql = files("oban.queries").joinpath(path).read_text(encoding="utf-8")
+    def _load_file(
+        path: str,
+        prefix: str = "public",
+        package: str = "oban.queries",
+        apply_prefix: bool = True,
+    ) -> str:
+        sql = files(package).joinpath(path).read_text(encoding="utf-8")
 
         if apply_prefix:
             return re.sub(
