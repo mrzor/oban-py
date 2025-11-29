@@ -212,7 +212,7 @@ class Oban:
         return self._leader.is_leader
 
     def _connection(self):
-        return self._query._driver.connection()
+        return self._query.connection()
 
     async def start(self) -> Oban:
         """Start the Oban instance and begin processing jobs.

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 from collections import defaultdict
+from contextlib import asynccontextmanager
 from dataclasses import replace
 from datetime import datetime, timezone
 from functools import cache
@@ -10,8 +11,8 @@ from typing import Any
 
 from psycopg.rows import class_row
 from psycopg.types.json import Jsonb
+from psycopg_pool import AsyncConnectionPool
 
-from ._driver import wrap_pool
 from ._executor import AckAction
 from .job import Job, TIMESTAMP_FIELDS
 
@@ -82,14 +83,26 @@ class Query:
 
         return value
 
-    def __init__(self, pool: Any, prefix: str = "public") -> None:
-        self._driver = wrap_pool(pool)
+    def __init__(self, pool: AsyncConnectionPool, prefix: str = "public") -> None:
+        if not isinstance(pool, AsyncConnectionPool):
+            raise TypeError(f"Expected AsyncConnectionPool, got {type(pool).__name__}")
+
+        self._pool = pool
         self._prefix = prefix
+
+    @property
+    def dsn(self) -> str:
+        return self._pool.conninfo
+
+    @asynccontextmanager
+    async def connection(self):
+        async with self._pool.connection() as conn:
+            yield conn
 
     # Jobs
 
     async def ack_jobs(self, acks: list[AckAction]) -> list[int]:
-        async with self._driver.connection() as conn:
+        async with self._pool.connection() as conn:
             async with conn.transaction():
                 stmt = self._load_file("ack_jobs.sql", self._prefix)
                 args = {}
@@ -107,7 +120,7 @@ class Query:
                 return [row[0] for row in rows]
 
     async def all_jobs(self, states: list[str]) -> list[Job]:
-        async with self._driver.connection() as conn:
+        async with self._pool.connection() as conn:
             stmt = self._load_file("all_jobs.sql", self._prefix)
 
             async with conn.cursor(row_factory=class_row(Job)) as cur:
@@ -115,7 +128,7 @@ class Query:
                 return await cur.fetchall()
 
     async def cancel_many_jobs(self, ids: list[int]) -> tuple[int, list[int]]:
-        async with self._driver.connection() as conn:
+        async with self._pool.connection() as conn:
             async with conn.transaction():
                 stmt = self._load_file("cancel_many_jobs.sql", self._prefix)
                 args = {"ids": ids}
@@ -128,7 +141,7 @@ class Query:
                 return len(rows), executing_ids
 
     async def delete_many_jobs(self, ids: list[int]) -> int:
-        async with self._driver.connection() as conn:
+        async with self._pool.connection() as conn:
             async with conn.transaction():
                 stmt = self._load_file("delete_many_jobs.sql", self._prefix)
                 args = {"ids": ids}
@@ -138,7 +151,7 @@ class Query:
                 return result.rowcount
 
     async def get_job(self, job_id: int) -> Job:
-        async with self._driver.connection() as conn:
+        async with self._pool.connection() as conn:
             stmt = self._load_file("get_job.sql", self._prefix)
 
             async with conn.cursor(row_factory=class_row(Job)) as cur:
@@ -149,7 +162,7 @@ class Query:
     async def fetch_jobs(
         self, demand: int, queue: str, node: str, uuid: str
     ) -> list[Job]:
-        async with self._driver.connection() as conn:
+        async with self._pool.connection() as conn:
             async with conn.transaction():
                 stmt = self._load_file("fetch_jobs.sql", self._prefix)
                 args = {"queue": queue, "demand": demand, "attempted_by": [node, uuid]}
@@ -160,7 +173,7 @@ class Query:
                     return await cur.fetchall()
 
     async def insert_jobs(self, jobs: list[Job]) -> list[Job]:
-        async with self._driver.connection() as conn:
+        async with self._pool.connection() as conn:
             stmt = self._load_file("insert_jobs.sql", self._prefix)
             args = defaultdict(list)
             seen = set([])
@@ -198,7 +211,7 @@ class Query:
             return inserted + dupes
 
     async def prune_jobs(self, max_age: int, limit: int) -> int:
-        async with self._driver.connection() as conn:
+        async with self._pool.connection() as conn:
             async with conn.transaction():
                 stmt = self._load_file("prune_jobs.sql", self._prefix)
                 args = {"max_age": max_age, "limit": limit}
@@ -208,7 +221,7 @@ class Query:
                 return result.rowcount
 
     async def rescue_jobs(self) -> int:
-        async with self._driver.connection() as conn:
+        async with self._pool.connection() as conn:
             async with conn.transaction():
                 stmt = self._load_file("rescue_jobs.sql", self._prefix)
 
@@ -217,7 +230,7 @@ class Query:
                 return result.rowcount
 
     async def retry_many_jobs(self, ids: list[int]) -> int:
-        async with self._driver.connection() as conn:
+        async with self._pool.connection() as conn:
             async with conn.transaction():
                 stmt = self._load_file("retry_many_jobs.sql", self._prefix)
                 args = {"ids": ids}
@@ -229,7 +242,7 @@ class Query:
     async def stage_jobs(
         self, limit: int, queues: list[str], before: datetime | None = None
     ) -> tuple[int, list[str]]:
-        async with self._driver.connection() as conn:
+        async with self._pool.connection() as conn:
             async with conn.transaction():
                 stmt = self._load_file("stage_jobs.sql", self._prefix)
                 args = {"limit": limit, "queues": queues, "before": before}
@@ -241,7 +254,7 @@ class Query:
                 return (len(rows), queues)
 
     async def update_many_jobs(self, jobs: list[Job]) -> list[Job]:
-        async with self._driver.connection() as conn:
+        async with self._pool.connection() as conn:
             async with conn.transaction():
                 stmt = self._load_file("update_job.sql", self._prefix)
                 args = defaultdict(list)
@@ -276,7 +289,7 @@ class Query:
     async def attempt_leadership(
         self, name: str, node: str, ttl: int, is_leader: bool
     ) -> bool:
-        async with self._driver.connection() as conn:
+        async with self._pool.connection() as conn:
             async with conn.transaction():
                 cleanup_stmt = self._load_file(
                     "cleanup_expired_leaders.sql", self._prefix
@@ -296,7 +309,7 @@ class Query:
                 return result is not None and result[0] == node
 
     async def resign_leader(self, name: str, node: str) -> None:
-        async with self._driver.connection() as conn:
+        async with self._pool.connection() as conn:
             stmt = self._load_file("resign_leader.sql", self._prefix)
             args = {"name": name, "node": node}
 
@@ -305,25 +318,25 @@ class Query:
     # Schema
 
     async def install(self) -> None:
-        async with self._driver.connection() as conn:
+        async with self._pool.connection() as conn:
             stmt = self._load_file("install.sql", self._prefix)
 
             await conn.execute(stmt)
 
     async def reset(self) -> None:
-        async with self._driver.connection() as conn:
+        async with self._pool.connection() as conn:
             stmt = self._load_file("reset.sql", self._prefix)
 
             await conn.execute(stmt)
 
     async def uninstall(self) -> None:
-        async with self._driver.connection() as conn:
+        async with self._pool.connection() as conn:
             stmt = self._load_file("uninstall.sql", self._prefix)
 
             await conn.execute(stmt)
 
     async def verify_structure(self) -> list[str]:
-        async with self._driver.connection() as conn:
+        async with self._pool.connection() as conn:
             stmt = self._load_file("verify_structure.sql", apply_prefix=False)
             args = {"prefix": self._prefix}
             rows = await conn.execute(stmt, args)
@@ -334,7 +347,7 @@ class Query:
     # Producer
 
     async def cleanup_expired_producers(self, max_age: float) -> int:
-        async with self._driver.connection() as conn:
+        async with self._pool.connection() as conn:
             stmt = self._load_file("cleanup_expired_producers.sql", self._prefix)
             args = {"max_age": max_age}
 
@@ -343,7 +356,7 @@ class Query:
             return result.rowcount
 
     async def delete_producer(self, uuid: str) -> None:
-        async with self._driver.connection() as conn:
+        async with self._pool.connection() as conn:
             stmt = self._load_file("delete_producer.sql", self._prefix)
             args = {"uuid": uuid}
 
@@ -352,7 +365,7 @@ class Query:
     async def insert_producer(
         self, uuid: str, name: str, node: str, queue: str, meta: dict[str, Any]
     ) -> None:
-        async with self._driver.connection() as conn:
+        async with self._pool.connection() as conn:
             stmt = self._load_file("insert_producer.sql", self._prefix)
             args = {
                 "uuid": uuid,
@@ -365,7 +378,7 @@ class Query:
             await conn.execute(stmt, args)
 
     async def refresh_producers(self, uuids: list[str]) -> int:
-        async with self._driver.connection() as conn:
+        async with self._pool.connection() as conn:
             stmt = self._load_file("refresh_producers.sql", self._prefix)
             args = {"uuids": uuids}
 
@@ -374,7 +387,7 @@ class Query:
             return result.rowcount
 
     async def update_producer(self, uuid: str, meta: dict[str, Any]) -> None:
-        async with self._driver.connection() as conn:
+        async with self._pool.connection() as conn:
             stmt = self._load_file("update_producer.sql", self._prefix)
             args = {"uuid": uuid, "meta": Jsonb(meta)}
 
@@ -383,7 +396,7 @@ class Query:
     # Notifier
 
     async def notify(self, channel: str, payloads: list[str]) -> None:
-        async with self._driver.connection() as conn:
+        async with self._pool.connection() as conn:
             await conn.execute(
                 "SELECT pg_notify(%s, payload) FROM json_array_elements_text(%s::json) AS payload",
                 (channel, Jsonb(payloads)),

@@ -221,7 +221,7 @@ class PostgresNotifier:
         await self._query.notify(channel, encoded)
 
     async def _connect(self) -> None:
-        dsn = self._query._driver.dsn
+        dsn = self._query.dsn
 
         self._conn = await asyncio.wait_for(
             AsyncConnection.connect(dsn, autocommit=True),
