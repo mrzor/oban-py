@@ -19,7 +19,11 @@ from psycopg_pool import AsyncConnectionPool
 
 from oban import __version__
 from oban._config import Config
-from oban.schema import install as install_schema, uninstall as uninstall_schema
+from oban.schema import (
+    install as install_schema,
+    uninstall as uninstall_schema,
+    upgrade as upgrade_schema,
+)
 from oban.telemetry import logger as telemetry_logger
 
 try:
@@ -222,6 +226,42 @@ def install(config: str | None, dsn: str | None, prefix: str | None) -> None:
             logger.info("Schema installed successfully")
         except Exception as error:
             logger.error(f"Failed to install schema: {error!r}", exc_info=True)
+            sys.exit(1)
+
+    asyncio_run(run())
+
+
+@main.command()
+@click.option(
+    "--config",
+    type=click.Path(exists=True, dir_okay=False, path_type=str),
+    help="Path to TOML configuration file (default: searches for oban.toml)",
+)
+@click.option(
+    "--dsn",
+    envvar="OBAN_DSN",
+    help="PostgreSQL connection string",
+)
+@click.option(
+    "--prefix",
+    envvar="OBAN_PREFIX",
+    help="PostgreSQL schema name (default: public)",
+)
+def upgrade(config: str | None, dsn: str | None, prefix: str | None) -> None:
+    """Upgrade the Oban database schema."""
+
+    async def run() -> None:
+        conf = _load_conf(config, {"dsn": dsn, "prefix": prefix})
+        schema_prefix = conf.prefix or "public"
+
+        logger.info(f"Upgrading Oban schema in '{schema_prefix}'...")
+
+        try:
+            async with schema_pool(conf.dsn) as pool:
+                await upgrade_schema(pool, prefix=schema_prefix)
+            logger.info("Schema upgraded successfully")
+        except Exception as error:
+            logger.error(f"Failed to upgrade schema: {error!r}", exc_info=True)
             sys.exit(1)
 
     asyncio_run(run())

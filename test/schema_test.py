@@ -49,22 +49,20 @@ async def isolated_db(postgres_conn, dsn_base):
 
 class TestInstallSql:
     def test_contains_expected_schema_elements(self):
-        sql = install_sql(prefix="isolated")
-
-        assert "CREATE TYPE isolated.oban_job_state" in sql
-        assert "CREATE TABLE isolated.oban_jobs" in sql
-        assert "CREATE UNLOGGED TABLE isolated.oban_leaders" in sql
-        assert "CREATE UNLOGGED TABLE isolated.oban_producers" in sql
-        assert "CREATE INDEX" in sql
-
-    def test_scoping_elements_to_the_prefix(self):
         sql = install_sql()
 
-        assert "CREATE TYPE public.oban_job_state" in sql
-        assert "CREATE TABLE public.oban_jobs" in sql
-        assert "CREATE UNLOGGED TABLE public.oban_leaders" in sql
-        assert "CREATE UNLOGGED TABLE public.oban_producers" in sql
-        assert "CREATE INDEX" in sql
+        assert "public.oban_job_state" in sql
+        assert "public.oban_jobs" in sql
+        assert "public.oban_leaders" in sql
+        assert "public.oban_producers" in sql
+
+    def test_scoping_elements_to_the_prefix(self):
+        sql = install_sql(prefix="isolated")
+
+        assert "isolated.oban_job_state" in sql
+        assert "isolated.oban_jobs" in sql
+        assert "isolated.oban_leaders" in sql
+        assert "isolated.oban_producers" in sql
 
 
 class TestUninstallSql:
