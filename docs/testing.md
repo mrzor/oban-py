@@ -1,8 +1,13 @@
 # Testing
 
-Automated testing is essential for building reliable applications. Since Oban orchestrates your
-application's background tasks, testing Oban is highly recommended. This guide covers unit testing
+Since Oban orchestrates your application's background tasks, testing Oban is highly recommended.
+Automated testing is essential for building reliable applications. This guide covers unit testing
 workers, integration testing with queues, and managing test data.
+
+```{tip}
+Because enqueueing jobs, processing jobs, and asserting on test data are `async` actions, tests
+must also be `async`.
+```
 
 ## Test Configuration
 
@@ -32,9 +37,9 @@ async def oban():
 
 Oban provides two testing modes controlled via the `oban.testing.mode()` context manager:
 
-* **inline** — Jobs execute immediately within the calling process without touching the database.
+- **inline** — Jobs execute immediately within the calling process without touching the database.
   Simple and suitable for most tests.
-* **manual** — Jobs are inserted into the database where they can be verified and executed when
+- **manual** — Jobs are inserted into the database where they can be verified and executed when
   desired. More flexible but requires database interaction.
 
 By default, jobs are inserted into the database in tests (manual mode). You can switch modes
@@ -84,10 +89,10 @@ async def test_activating_a_new_user():
 
 The `process_job()` helper:
 
-* Converts `args` to JSON and back to ensure valid types
-* Sets required fields like `id`, `attempt`, `attempted_at`
-* Executes the worker's `process()` method
-* Returns the result for assertions
+- Converts `args` to JSON and back to ensure valid types
+- Sets required fields like `id`, `attempt`, `attempted_at`
+- Executes the worker's `process()` method
+- Returns the result for assertions
 
 ### Testing Function Workers
 
@@ -168,7 +173,7 @@ async def test_notifies_all_owners():
     jobs = await all_enqueued(worker=NotificationWorker)
     assert len(jobs) == 3
 
-    # Use pattern matching for complex assertions
+    # Make complex assertions on each job's args
     for job in jobs:
         assert "email" in job.args
         assert "name" in job.args
@@ -205,8 +210,6 @@ async def test_email_delivery():
     # Now assert that the email was sent
     assert len(sent_emails) == 1
 ```
-
-### Drain Queue Options
 
 The `drain_queue()` function supports several options:
 

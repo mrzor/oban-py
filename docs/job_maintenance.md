@@ -63,16 +63,13 @@ oban = Oban(
 )
 ```
 
-## Guidelines
+## Maintenance Guidelines
 
-* Pruning is best-effort and performed out-of-band. This means that all limits are soft; jobs
-  beyond a specified age may not be pruned immediately after jobs complete.
+- All limits are soft; jobs beyond a specified age may not be pruned immediately after jobs
+  complete. This means, pruning is best-effort and performed out-of-band.
 
-* Pruning is only applied to jobs that are `completed`, `cancelled`, or `discarded`. It'll never
+- Pruning is only applied to jobs that are `completed`, `cancelled`, or `discarded`. It'll never
   delete jobs in an incomplete state.
 
-* For high-volume systems, consider reducing `max_age` to keep the jobs table smaller, or
+- For high-volume systems, consider reducing `max_age` to keep the jobs table smaller, or
   increasing `limit` to prune more jobs per run.
-
-* The lifeline process rescues jobs that appear to be stuck, allowing them to be retried. This
-  prevents jobs from being lost due to unexpected crashes or deployments.

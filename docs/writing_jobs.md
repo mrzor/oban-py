@@ -41,7 +41,7 @@ class EmailWorker:
 await EmailWorker.enqueue({"to": "user@example.com", "subject": "Hello"})
 ```
 
-Use function workers for simple, stateless operations. Use class workers when you need retry
+Use function workers for simple operations. Use class workers when you need retry
 customization, job metadata access, or complex flow control.
 
 ## Worker Configuration
@@ -193,8 +193,6 @@ lists, and dicts—are supported and will round-trip correctly between Python an
 Class-based workers receive a `Job` object with full context about the current execution. Here are
 the most commonly used attributes:
 
-### Core Attributes
-
 ```python
 @worker(queue="default")
 class ContextAwareWorker:
@@ -260,18 +258,18 @@ Oban uses a jittered exponential backoff by default. The attempt number is clamp
 with higher `max_attempts`. This table shows the base delay between attempts and cumulative time:
 
 | Attempt | Base Delay | Cumulative |
-|--------:|-----------:|-----------:|
-| 1       | 17s        | 17s        |
-| 2       | 19s        | 36s        |
-| 3       | 23s        | 59s        |
-| 4       | 31s        | 1m 30s     |
-| 5       | 47s        | 2m 17s     |
-| 6       | 1m 19s     | 3m 36s     |
-| 7       | 2m 23s     | 5m 59s     |
-| 8       | 4m 31s     | 10m 30s    |
-| 10      | 17m 7s     | 44m 44s    |
-| 15      | 9h 6m      | 18h 18m    |
-| 20      | 12d 3h     | 24d 8h     |
+| ------: | ---------: | ---------: |
+|       1 |        17s |        17s |
+|       2 |        19s |        36s |
+|       3 |        23s |        59s |
+|       4 |        31s |     1m 30s |
+|       5 |        47s |     2m 17s |
+|       6 |     1m 19s |     3m 36s |
+|       7 |     2m 23s |     5m 59s |
+|       8 |     4m 31s |    10m 30s |
+|      10 |     17m 7s |    44m 44s |
+|      15 |      9h 6m |    18h 18m |
+|      20 |     12d 3h |     24d 8h |
 
 Jitter is applied to all backoff, which spreads out retries to avoid thundering herd problems when
 many jobs fail simultaneously
