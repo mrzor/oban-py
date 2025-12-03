@@ -27,6 +27,7 @@ writing_jobs
 scheduling_jobs
 periodic_jobs
 unique_jobs
+managing_jobs
 job_maintenance
 testing
 ```
