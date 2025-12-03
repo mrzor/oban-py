@@ -41,6 +41,23 @@ def with_uniq_meta(job: Job) -> Job:
     return replace(job, meta=meta)
 
 
+def take_keys(data: dict[str, Any], keys: list[str] | None) -> list[tuple[str, str]]:
+    if not data:
+        return []
+
+    if not keys:
+        keys = list(data.keys())
+
+    return [(key, _hash_val(data.get(key))) for key in sorted(keys)]
+
+
+def hash64(data: list[Any]) -> str:
+    serialized = orjson.dumps(data, option=orjson.OPT_SORT_KEYS)
+    hashed = hashlib.blake2s(serialized)
+
+    return base64.b64encode(hashed.digest()).decode().rstrip("=")
+
+
 def _gen_bmp(job: Job) -> list[int]:
     if not job.unique:
         raise RuntimeError("Unique required")
@@ -59,9 +76,9 @@ def _gen_key(job: Job) -> str:
     data = []
     for field in sorted(fields):
         if field == "args":
-            data.append(_take_keys(job.args, keys))
+            data.append(take_keys(job.args, keys))
         elif field == "meta":
-            data.append(_take_keys(job.meta, keys))
+            data.append(take_keys(job.meta, keys))
         elif field == "worker":
             data.append(job.worker)
         elif field == "queue":
@@ -70,19 +87,9 @@ def _gen_key(job: Job) -> str:
     if period is not None:
         timestamp = job.scheduled_at or datetime.now(timezone.utc)
 
-        data.insert(0, truncate(period, timestamp))
+        data.insert(0, _truncate(period, timestamp))
 
     return hash64(data)
-
-
-def _take_keys(data: dict[str, Any], keys: list[str] | None) -> list[tuple[str, str]]:
-    if not data:
-        return []
-
-    if not keys:
-        keys = list(data.keys())
-
-    return [(key, _hash_val(data.get(key))) for key in sorted(keys)]
 
 
 def _hash_val(val: Any) -> str:
@@ -97,16 +104,9 @@ def _hash_val(val: Any) -> str:
             return str(val)
 
 
-def truncate(period: int, timestamp: datetime) -> str:
+def _truncate(period: int, timestamp: datetime) -> str:
     u_seconds = int(timestamp.timestamp())
     remainder = u_seconds % period
     truncated = u_seconds - remainder
 
     return datetime.fromtimestamp(truncated, tz=timezone.utc).isoformat()
-
-
-def hash64(data: list[Any]) -> str:
-    serialized = orjson.dumps(data, option=orjson.OPT_SORT_KEYS)
-    hashed = hashlib.blake2s(serialized)
-
-    return base64.b64encode(hashed.digest()).decode().rstrip("=")

@@ -14,6 +14,7 @@ from typing import Any, TypedDict, TypeVar
 
 import orjson
 
+from ._extensions import use_ext
 from ._recorded import encode_recorded
 from ._unique import with_uniq_meta
 
@@ -305,6 +306,8 @@ class Job:
         job._normalize_tags()
         job._normalize_unique()
         job._validate()
+
+        job = use_ext("job.after_new", (lambda _job: _job), job)
 
         return with_uniq_meta(job)
 

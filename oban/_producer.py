@@ -4,7 +4,7 @@ import asyncio
 import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 from . import telemetry
@@ -53,6 +53,9 @@ class QueueInfo:
 
     limit: int
     """The concurrency limit for this queue."""
+
+    meta: dict[str, Any]
+    """Queue metadata including extension options (global_limit, partition, etc.)."""
 
     node: str
     """The node name where this queue is running."""
@@ -191,6 +194,7 @@ class Producer:
     def check(self) -> QueueInfo:
         return QueueInfo(
             limit=self._limit,
+            meta=self._extra,
             node=self._node,
             paused=self._paused,
             queue=self._queue,
