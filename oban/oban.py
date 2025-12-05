@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import socket
+from collections.abc import Iterable
 from typing import Any, Callable
 
 from psycopg_pool import AsyncConnectionPool
@@ -337,14 +338,18 @@ class Oban:
 
         return result[0]
 
-    async def enqueue_many(self, *jobs: Job) -> list[Job]:
+    async def enqueue_many(
+        self, jobs_or_first: Iterable[Job] | Job, /, *rest: Job
+    ) -> list[Job]:
         """Insert multiple jobs into the database in a single operation.
 
         This is more efficient than calling enqueue() multiple times as it uses a
         single database query to insert all jobs.
 
         Args:
-            *jobs: Job instances created via Worker.new()
+            jobs_or_first: Either an iterable of jobs, or the first job when using
+                variadic arguments
+            *rest: Additional jobs when using variadic arguments
 
         Returns:
             The inserted jobs with database-assigned values (id, timestamps, state)
@@ -354,15 +359,23 @@ class Oban:
             >>> job2 = EmailWorker.new({"to": "user2@example.com"})
             >>> job3 = EmailWorker.new({"to": "user3@example.com"})
             >>> await oban.enqueue_many(job1, job2, job3)
+            >>> # Or with an iterable:
+            >>> await oban.enqueue_many([job1, job2, job3])
+            >>> await oban.enqueue_many(Worker.new({"id": id}) for id in range(10))
         """
         from .testing import _get_mode
+
+        if isinstance(jobs_or_first, Job):
+            jobs = [jobs_or_first, *rest]
+        else:
+            jobs = list(jobs_or_first)
 
         if _get_mode() == "inline":
             await self._execute_inline(jobs)
 
-            return list(jobs)
+            return jobs
 
-        result = await self._query.insert_jobs(list(jobs))
+        result = await self._query.insert_jobs(jobs)
 
         queues = {job.queue for job in result if job.state == "available"}
 
