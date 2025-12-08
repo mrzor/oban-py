@@ -10,13 +10,12 @@ import asyncio
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta, timezone
 from enum import StrEnum
-from typing import Any, TypedDict, TypeVar
+from typing import Any, TypeVar
 
 import orjson
 
 from ._extensions import use_ext
 from ._recorded import encode_recorded
-from ._unique import with_uniq_meta
 
 
 class JobState(StrEnum):
@@ -38,59 +37,6 @@ class JobState(StrEnum):
     EXECUTING = "executing"
     RETRYABLE = "retryable"
     SCHEDULED = "scheduled"
-
-
-class UniqueField(StrEnum):
-    """Fields used to determine job uniqueness.
-
-    - ARGS: The job's arguments
-    - META: The job's metadata
-    - QUEUE: The queue name
-    - WORKER: The worker class name
-    """
-
-    ARGS = "args"
-    META = "meta"
-    QUEUE = "queue"
-    WORKER = "worker"
-
-
-class UniqueGroup(StrEnum):
-    """State groups to check when evaluating uniqueness.
-
-    - ALL: Check against jobs in any state
-    - INCOMPLETE: Check against available, scheduled, executing, and retryable jobs
-    - SCHEDULED: Check against only scheduled jobs
-    - SUCCESSFUL: Check against incomplete and completed jobs
-    """
-
-    ALL = "all"
-    INCOMPLETE = "incomplete"
-    SCHEDULED = "scheduled"
-    SUCCESSFUL = "successful"
-
-
-class UniqueOptions(TypedDict, total=False):
-    """Options for controlling job uniqueness.
-
-    Uniqueness prevents duplicate jobs from being enqueued based on the specified
-    criteria. Jobs are considered duplicates if they match on the configured fields
-    within the specified period and states.
-
-    Example:
-        Prevent duplicate jobs with same args in a 5 minute window:
-
-        >>> unique={"period": 300}
-
-        Only check specific arg keys:
-
-        >>> unique={"period": 60, "fields": ["args"], "keys": ["user_id"]}
-    """
-
-    fields: list[UniqueField]
-    group: UniqueGroup
-    keys: list[str] | None
-    period: int | None
 
 
 T = TypeVar("T")
@@ -182,17 +128,6 @@ TIMESTAMP_FIELDS = [
     "scheduled_at",
 ]
 
-DEFAULT_UNIQUE = {
-    "period": None,
-    "fields": ["queue", "worker", "args"],
-    "keys": None,
-    "group": "all",
-}
-
-
-UNIQUE_FIELDS = {elem.value for elem in UniqueField}
-UNIQUE_GROUPS = {elem.value for elem in UniqueGroup}
-
 
 @dataclass(slots=True)
 class Job:
@@ -215,9 +150,8 @@ class Job:
     discarded_at: datetime | None = None
     scheduled_at: datetime | None = None
 
-    # Virtual
-    conflicted: bool = False
-    unique: dict[str, Any] | None = None
+    # Virtual fields for runtime state (not persisted to database)
+    extra: dict[str, Any] = field(default_factory=dict, repr=False)
     _cancellation: asyncio.Event | None = field(default=None, init=False, repr=False)
 
     @staticmethod
@@ -274,7 +208,6 @@ class Job:
                 - schedule_in: Alternative to scheduled_at. Timedelta or seconds from now
                 - tags: List of tags for grouping
                 - meta: Arbitrary metadata dictionary
-                - unique: Uniqueness options, True (use defaults), a dict with options (period, fields, keys, group), or None (no uniqueness)
 
         Returns:
             A validated and normalized Job instance
@@ -304,12 +237,9 @@ class Job:
 
         job = cls(**params)
         job._normalize_tags()
-        job._normalize_unique()
         job._validate()
 
-        job = use_ext("job.after_new", (lambda _job: _job), job)
-
-        return with_uniq_meta(job)
+        return use_ext("job.after_new", (lambda _job: _job), job)
 
     def update(self, changes: dict[str, Any]) -> Job:
         """Update this job with the given changes, applying validation and normalization.
@@ -369,17 +299,6 @@ class Job:
             {str(tag).strip().lower() for tag in self.tags if tag and str(tag).strip()}
         )
 
-    def _normalize_unique(self) -> None:
-        if self.unique is None:
-            return
-
-        if self.unique is True:
-            self.unique = {}
-
-        self.unique = {
-            key: self.unique.get(key, val) for (key, val) in DEFAULT_UNIQUE.items()
-        }
-
     def _validate(self) -> None:
         if not self.queue.strip():
             raise ValueError("queue must not be blank")
@@ -392,25 +311,3 @@ class Job:
 
         if not (0 <= self.priority <= 9):
             raise ValueError("priority must be between 0 and 9")
-
-        self._validate_unique()
-
-    def _validate_unique(self) -> None:
-        if not isinstance(self.unique, dict):
-            return
-
-        if fields := self.unique.get("fields", None):
-            if invalid := set(fields) - UNIQUE_FIELDS:
-                raise ValueError(f"invalid unique fields: {invalid}")
-
-        if group := self.unique.get("group", None):
-            if group not in UNIQUE_GROUPS:
-                raise ValueError(f"invalid unique group: {group}")
-
-        if keys := self.unique.get("keys", None):
-            if not isinstance(keys, list):
-                raise ValueError(f"invalid unique keys: {keys}")
-
-        if period := self.unique.get("period", None):
-            if not isinstance(period, int):
-                raise ValueError(f"invalid unique period: {period}")

@@ -15,6 +15,8 @@ from .job import Job, Result
 from ._scheduler import register_scheduled
 from ._worker import register_worker, worker_name
 
+_JOB_FIELDS = set(Job.__dataclass_fields__.keys()) - {"extra"} | {"schedule_in"}
+
 
 def worker(*, oban: str = "oban", cron: str | dict | None = None, **overrides):
     """Decorate a class to make it a viable worker.
@@ -116,10 +118,16 @@ def worker(*, oban: str = "oban", cron: str | dict | None = None, **overrides):
             setattr(cls, "process", process)
 
         @classmethod
-        def new(cls, args: dict[str, Any] | None = None, /, **overrides) -> Job:
-            params = {**cls._opts, **overrides}
+        def new(cls, args: dict[str, Any] | None = None, /, **params) -> Job:
+            merged = {**cls._opts, **params}
+            extras = {
+                key: merged.pop(key) for key in list(merged) if key not in _JOB_FIELDS
+            }
 
-            return Job.new(worker=worker_name(cls), args=args or {}, **params)
+            if extras:
+                merged["extra"] = extras
+
+            return Job.new(worker=worker_name(cls), args=args or {}, **merged)
 
         @classmethod
         async def enqueue(

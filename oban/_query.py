@@ -80,18 +80,9 @@ async def _ack_jobs(query: Query, acks: list[AckAction]) -> list[int]:
 async def _insert_jobs(query: Query, jobs: list[Job]) -> list[Job]:
     async with query._pool.connection() as conn:
         stmt = Query._load_file("insert_job.sql", query._prefix)
-        seen = set([])
         inserted = []
 
         for job in jobs:
-            uniq_key = job.meta.get("uniq_key", None)
-
-            if uniq_key and uniq_key in seen:
-                inserted.append(replace(job, conflicted=True))
-                continue
-            elif uniq_key:
-                seen.add(uniq_key)
-
             args = {
                 key: Query._cast_type(key, getattr(job, key))
                 for key in INSERTABLE_FIELDS
@@ -108,7 +99,6 @@ async def _insert_jobs(query: Query, jobs: list[Job]) -> list[Job]:
                     queue=row[2],
                     scheduled_at=row[3],
                     state=row[4],
-                    conflicted=row[5],
                 )
             )
 

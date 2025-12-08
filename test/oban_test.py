@@ -55,32 +55,6 @@ class TestEnqueue:
             assert job.worker == "test.oban_test.Worker"
             assert job.state == "available"
 
-    async def test_inserting_unique_jobs_results_in_conflict(self, oban_instance):
-        job_1 = Worker.new({"ref": 1}, unique={"keys": ["ref"]})
-        job_2 = Worker.new({"ref": 1}, unique={"keys": ["ref"]})
-
-        async with oban_instance() as oban:
-            job_1 = await oban.enqueue(job_1)
-            job_2 = await oban.enqueue(job_1)
-
-            assert not job_1.conflicted
-            assert job_2.conflicted
-
-    async def test_inserting_unique_job_respects_group_constraints(self, oban_instance):
-        unique = {"group": "scheduled"}
-        job_1 = Worker.new({"ref": 1}, state="scheduled", unique=unique)
-        job_2 = Worker.new({"ref": 1}, state="available", unique=unique)
-        job_3 = Worker.new({"ref": 1}, state="scheduled", unique=unique)
-
-        async with oban_instance() as oban:
-            job_1 = await oban.enqueue(job_1)
-            job_2 = await oban.enqueue(job_2)
-            job_3 = await oban.enqueue(job_3)
-
-            assert not job_1.conflicted
-            assert not job_2.conflicted
-            assert job_3.conflicted
-
 
 class TestEnqueueMany:
     async def test_multiple_jobs_are_inserted_into_database(self, oban_instance):
@@ -98,22 +72,6 @@ class TestEnqueueMany:
                 assert job.inserted_at is not None
                 assert job.scheduled_at is not None
                 assert job.state == "available"
-
-    async def test_inserting_unique_jobs_results_in_conflict(self, oban_instance):
-        job_1 = Worker.new({"ref": 1}, unique={"keys": ["ref"]})
-        job_2 = Worker.new({"ref": 1}, unique={"keys": ["ref"]})
-        job_3 = Worker.new({"ref": 2}, unique={"keys": ["ref"]})
-
-        async with oban_instance() as oban:
-            job_1, job_2, job_3 = await oban.enqueue_many(job_1, job_2, job_3)
-
-            assert not job_1.conflicted
-            assert job_2.conflicted
-            assert not job_3.conflicted
-
-            assert job_1.id
-            assert not job_2.id
-            assert job_3.id
 
 
 class TestIntegration:
@@ -579,17 +537,6 @@ class TestRetryJob:
     async def test_retrying_a_nonexistent_job(self, oban_instance):
         async with oban_instance() as oban:
             await oban.retry_job(99999)
-
-    async def test_retrying_unique_jobs_clears_bitmap(self, oban_instance):
-        async with oban_instance() as oban:
-            job = await Worker.enqueue({"ref": 1}, unique=True, state="completed")
-
-            await oban.retry_job(job)
-
-            job = await get_job(oban, job.id)
-
-            assert job.meta.get("uniq") is True
-            assert job.meta.get("uniq_bmp") == []
 
 
 class TestRetryAllJobs:

@@ -25,6 +25,4 @@ INSERT INTO oban_jobs(
     %(tags)s,
     %(worker)s
 )
-ON CONFLICT (uniq_key) WHERE uniq_key IS NOT NULL DO UPDATE
-    SET queue = oban_jobs.queue
-RETURNING id, inserted_at, queue, scheduled_at, state, (xmax != 0) AS conflicted;
+RETURNING id, inserted_at, queue, scheduled_at, state;

@@ -98,56 +98,6 @@ class TestScheduleIn:
         assert now < job.scheduled_at < top
 
 
-class TestUniqueOptions:
-    def test_unique_true_normalized_to_defaults(self):
-        job = Job.new(worker="Worker", unique=True)
-
-        assert job.unique == {
-            "period": None,
-            "fields": ["queue", "worker", "args"],
-            "keys": None,
-            "group": "all",
-        }
-
-    def test_unique_partial_dict_gets_defaults(self):
-        job = Job.new(worker="Worker", unique={"period": 60})
-
-        assert job.unique == {
-            "period": 60,
-            "fields": ["queue", "worker", "args"],
-            "keys": None,
-            "group": "all",
-        }
-
-    def test_unique_period_accepts_int(self):
-        assert Job.new(worker="Worker", unique={"period": 300})
-
-    def test_unique_period_accepts_none(self):
-        assert Job.new(worker="Worker", unique={"period": None})
-
-    def test_unique_fields_accepts_valid_fields(self):
-        assert Job.new(worker="Worker", unique={"fields": ["worker", "queue"]})
-        assert Job.new(worker="Worker", unique={"fields": ["args", "meta"]})
-
-    def test_unique_fields_rejects_invalid_fields(self):
-        with pytest.raises(ValueError, match="fields"):
-            Job.new(worker="Worker", unique={"fields": ["tags"]})
-
-        with pytest.raises(ValueError, match="fields"):
-            Job.new(worker="Worker", unique={"fields": ["invalid"]})
-
-    def test_unique_keys_accepts_list_of_strings(self):
-        assert Job.new(worker="Worker", unique={"keys": ["user_id", "action"]})
-
-    def test_unique_group_accepts_valid_groups(self):
-        for group in ["all", "incomplete", "scheduled", "successful"]:
-            assert Job.new(worker="Worker", unique={"group": group})
-
-    def test_unique_group_rejects_invalid_groups(self):
-        with pytest.raises(ValueError, match="group"):
-            Job.new(worker="Worker", unique={"group": "invalid"})
-
-
 class TestRecord:
     def test_record_stores_encoded_value(self):
         record = Record({"key": "value"})

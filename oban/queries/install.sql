@@ -17,21 +17,6 @@ BEGIN
 END
 $$;
 
--- Functions
-
-CREATE OR REPLACE FUNCTION oban_state_to_bit(state oban_job_state)
-RETURNS jsonb AS $$
-SELECT CASE
-       WHEN state = 'scheduled' THEN '0'::jsonb
-       WHEN state = 'available' THEN '1'::jsonb
-       WHEN state = 'executing' THEN '2'::jsonb
-       WHEN state = 'retryable' THEN '3'::jsonb
-       WHEN state = 'completed' THEN '4'::jsonb
-       WHEN state = 'cancelled' THEN '5'::jsonb
-       WHEN state = 'discarded' THEN '6'::jsonb
-       END;
-$$ LANGUAGE SQL IMMUTABLE STRICT;
-
 -- Tables
 
 CREATE TABLE IF NOT EXISTS oban_jobs (
@@ -53,7 +38,6 @@ CREATE TABLE IF NOT EXISTS oban_jobs (
     cancelled_at timestamp WITHOUT TIME ZONE,
     completed_at timestamp WITHOUT TIME ZONE,
     discarded_at timestamp WITHOUT TIME ZONE,
-    uniq_key text GENERATED ALWAYS AS (CASE WHEN meta->'uniq_bmp' @> oban_state_to_bit(state) THEN meta->>'uniq_key' END) STORED,
 
     CONSTRAINT attempt_range CHECK (attempt >= 0 AND attempt <= max_attempts),
     CONSTRAINT queue_length CHECK (char_length(queue) > 0),
@@ -103,10 +87,6 @@ WHERE state = 'cancelled';
 CREATE INDEX IF NOT EXISTS oban_jobs_discarded_at_index
 ON oban_jobs (discarded_at)
 WHERE state = 'discarded';
-
-CREATE UNIQUE INDEX IF NOT EXISTS oban_jobs_unique_index
-ON oban_jobs (uniq_key)
-WHERE uniq_key IS NOT NULL;
 
 -- Autovacuum
 
