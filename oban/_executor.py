@@ -16,14 +16,18 @@ if TYPE_CHECKING:
     from .job import Job
 
 
-@dataclass
+@dataclass(frozen=True, slots=True)
 class AckAction:
-    id: int
+    job: Job
     state: str
     attempt_change: int | None = None
     error: dict | None = None
     meta: dict | None = None
     schedule_in: int | None = None
+
+    @property
+    def id(self) -> int | None:
+        return self.job.id
 
 
 class Executor:
@@ -76,13 +80,13 @@ class Executor:
             case Exception() as error:
                 if self.job.attempt >= self.job.max_attempts:
                     self.action = AckAction(
-                        id=self.job.id,
+                        job=self.job,
                         state="discarded",
                         error=self._format_error(error),
                     )
                 else:
                     self.action = AckAction(
-                        id=self.job.id,
+                        job=self.job,
                         state="retryable",
                         error=self._format_error(error),
                         schedule_in=self._retry_backoff(),
@@ -90,12 +94,12 @@ class Executor:
 
             case Cancel(reason=reason):
                 self.action = AckAction(
-                    id=self.job.id, state="cancelled", error=self._format_error(reason)
+                    job=self.job, state="cancelled", error=self._format_error(reason)
                 )
 
             case Snooze(seconds=seconds):
                 self.action = AckAction(
-                    id=self.job.id,
+                    job=self.job,
                     attempt_change=-1,
                     state="scheduled",
                     schedule_in=seconds,
@@ -104,13 +108,13 @@ class Executor:
 
             case Record(encoded=encoded):
                 self.action = AckAction(
-                    id=self.job.id,
+                    job=self.job,
                     state="completed",
                     meta={"recorded": True, "return": encoded},
                 )
 
             case _:
-                self.action = AckAction(id=self.job.id, state="completed")
+                self.action = AckAction(job=self.job, state="completed")
 
     def _report_stopped(self) -> None:
         stop_time = time.monotonic_ns()
