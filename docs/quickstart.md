@@ -174,5 +174,5 @@ async def lifespan(app: FastAPI):
 app = FastAPI(lifespan=lifespan)
 ```
 
-Keep exploring to learn about advanced features like retry backoff, unique jobs, and advanced
+Keep exploring to learn about advanced features like retry backoff and advanced
 scheduling.

@@ -94,9 +94,6 @@ without worrying about jobs being lost or orphaned due to crashes.
 - **Triggered Execution** — Insert triggers ensure that jobs are dispatched on all connected nodes
   as soon as they are inserted into the database.
 
-- **Unique Jobs** — Duplicate work can be avoided through unique job controls. Uniqueness can be
-  enforced at the argument, queue, worker and even sub-argument level for any period of time.
-
 - **Scheduled Jobs** — Jobs can be scheduled at any time in the future, down to the second.
 
 - **Periodic (CRON) Jobs** — Automatically enqueue jobs on a cron-like schedule. Duplicate jobs

@@ -31,7 +31,7 @@ def worker(*, oban: str = "oban", cron: str | dict | None = None, **overrides):
         cron: Optional cron configuration for periodic execution. Can be:
               - A string expression (e.g., "0 0 \\* \\* \\*" or "@daily")
               - A dict with "expr" and optional "timezone" keys (timezone as string)
-        **overrides: Configuration options for the worker (queue, priority, unique, etc.)
+        **overrides: Configuration options for the worker (queue, priority, etc.)
 
     Returns:
         A decorator function that can be applied to worker classes
@@ -83,13 +83,6 @@ def worker(*, oban: str = "oban", cron: str | dict | None = None, **overrides):
         >>>
         >>> # Workers can also be created without args
         >>> job = DailyCleanup.new()  # args defaults to {}
-        >>>
-        >>> # Worker with uniqueness constraints
-        >>> @worker(queue="default", unique=True)
-        ... class UniqueWorker:
-        ...     async def process(self, job):
-        ...         print("This won't run twice")
-        ...         return None
         >>>
         >>> # Custom backoff for retries
         >>> @worker(queue="default")
@@ -167,7 +160,7 @@ def job(*, oban: str = "oban", cron: str | dict | None = None, **overrides):
         cron: Optional cron configuration for periodic execution. Can be:
               - A string expression (e.g., "0 0 \\* \\* \\*" or "@daily")
               - A dict with "expr" and optional "timezone" keys (timezone as string)
-        **overrides: Configuration options (queue, priority, unique, etc.)
+        **overrides: Configuration options (queue, priority, etc.)
 
     Example:
         >>> from oban import job
