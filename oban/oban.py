@@ -392,6 +392,22 @@ class Oban:
             if asyncio.iscoroutine(result):
                 await result
 
+    async def get_job(self, job_id: int) -> Job | None:
+        """Fetch a job by its ID.
+
+        Args:
+            job_id: The ID of the job to fetch
+
+        Returns:
+            The Job if found, None otherwise
+
+        Example:
+            >>> job = await oban.get_job(123)
+            >>> if job:
+            ...     print(f"Job state: {job.state}")
+        """
+        return await self._query.get_job(job_id)
+
     async def retry_job(self, job: Job | int) -> None:
         """Retry a job by setting it as available for execution.
 

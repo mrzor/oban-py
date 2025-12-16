@@ -7,12 +7,8 @@ from oban import Cancel, Record, Snooze, worker
 from oban._recorded import decode_recorded
 
 
-async def get_job(oban, job_id):
-    return await oban._query.get_job(job_id)
-
-
 async def assert_state(oban, job_id, expected_state):
-    job = await get_job(oban, job_id)
+    job = await oban.get_job(job_id)
 
     assert job is not None and job.state == expected_state
 
@@ -147,7 +143,7 @@ class TestIntegration:
 
             await with_backoff(lambda: assert_state(oban, job.id, "completed"))
 
-            job = await get_job(oban, job.id)
+            job = await oban.get_job(job.id)
 
             assert job.completed_at is not None
 
@@ -158,7 +154,7 @@ class TestIntegration:
 
             await with_backoff(lambda: assert_state(oban, job.id, "cancelled"))
 
-            job = await get_job(oban, job.id)
+            job = await oban.get_job(job.id)
 
             assert job.cancelled_at is not None
 
@@ -169,7 +165,7 @@ class TestIntegration:
 
             await with_backoff(lambda: assert_state(oban, job.id, "scheduled"))
 
-            job = await get_job(oban, job.id)
+            job = await oban.get_job(job.id)
 
             assert job.scheduled_at > datetime.now(timezone.utc)
             assert job.meta["snoozed"] == 1
@@ -184,7 +180,7 @@ class TestIntegration:
 
             await with_backoff(lambda: assert_state(oban, job.id, "completed"))
 
-            job = await get_job(oban, job.id)
+            job = await oban.get_job(job.id)
 
             assert job.meta["recorded"]
             assert job.meta["keep"]
@@ -198,7 +194,7 @@ class TestIntegration:
 
             await with_backoff(lambda: assert_state(oban, job.id, "retryable"))
 
-            job = await get_job(oban, job.id)
+            job = await oban.get_job(job.id)
 
             assert job.scheduled_at > now
 
@@ -214,7 +210,7 @@ class TestIntegration:
 
             await with_backoff(lambda: assert_state(oban, job.id, "discarded"))
 
-            job = await get_job(oban, job.id)
+            job = await oban.get_job(job.id)
 
             assert job.discarded_at is not None
             assert len(job.errors) > 0
@@ -565,7 +561,7 @@ class TestDeleteJob:
 
             await oban.delete_job(job.id)
 
-            assert await get_job(oban, job.id) is None
+            assert await oban.get_job(job.id) is None
 
     async def test_deleting_a_job_by_instance(self, oban_instance):
         async with oban_instance() as oban:
@@ -573,7 +569,7 @@ class TestDeleteJob:
 
             await oban.delete_job(job)
 
-            assert await get_job(oban, job.id) is None
+            assert await oban.get_job(job.id) is None
 
     async def test_deleting_nonexistent_job(self, oban_instance):
         async with oban_instance() as oban:
@@ -589,8 +585,8 @@ class TestDeleteAllJobs:
 
             assert await oban.delete_many_jobs([job_1.id, job_2]) == 2
 
-            assert await get_job(oban, job_1.id) is None
-            assert await get_job(oban, job_2.id) is None
+            assert await oban.get_job(job_1.id) is None
+            assert await oban.get_job(job_2.id) is None
 
 
 class TestCancelJob:
@@ -600,7 +596,7 @@ class TestCancelJob:
 
             await oban.cancel_job(job.id)
 
-            job = await get_job(oban, job.id)
+            job = await oban.get_job(job.id)
 
             assert job.state == "cancelled"
             assert job.cancelled_at is not None
