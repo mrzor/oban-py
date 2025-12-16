@@ -40,4 +40,5 @@ testing
 
 api
 cli
+changelog
 ```
