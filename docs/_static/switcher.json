@@ -1,0 +1,19 @@
+[
+  {
+      "version": "0.3.0",
+      "url": "http://localhost:8000/docs/py/0.3.0/",
+      "preferred": true
+  },
+  {
+      "version": "0.2.1",
+      "url": "http://localhost:8000/docs/py/0.2.1/"
+  },
+  {
+      "version": "0.2.0",
+      "url": "http://localhost:8000/docs/py/0.2.0/"
+  },
+  {
+      "version": "0.1.0",
+      "url": "http://localhost:8000/docs/py/0.1.0/"
+  }
+]

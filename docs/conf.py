@@ -3,6 +3,7 @@
 # For the full list of built-in configuration values, see the documentation:
 # https://www.sphinx-doc.org/en/master/usage/configuration.html
 
+import os
 import sys
 
 from importlib import metadata
@@ -40,7 +41,17 @@ exclude_patterns = [".DS_Store"]
 
 html_theme = "sphinx_book_theme"
 html_static_path = ["_static"]
+html_css_files = ["custom.css"]
 html_logo = "_static/oban-logo.svg"
+
+html_sidebars = {
+    "**": [
+        "navbar-logo.html",
+        "version-switcher-sidebar.html",
+        "search-button-field.html",
+        "sbt-sidebar-nav.html",
+    ]
+}
 
 html_theme_options = {
     "repository_url": "https://github.com/oban-bg/oban-py",
@@ -50,6 +61,12 @@ html_theme_options = {
     "show_toc_level": 2,
     "navigation_with_keys": True,
     "show_navbar_depth": 1,
+    "switcher": {
+        "json_url": os.environ.get(
+            "DOCS_SWITCHER_URL", "https://oban.pro/docs/py/switcher.json"
+        ),
+        "version_match": release,
+    },
 }
 
 # -- Extension configuration -------------------------------------------------

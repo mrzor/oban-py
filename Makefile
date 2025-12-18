@@ -43,7 +43,8 @@ bench:
 docs:
 	uv run --group docs sphinx-build -b html docs docs/_build
 
-docs-serve: docs
+docs-serve:
+	DOCS_SWITCHER_URL="_static/switcher.json" uv run --group docs sphinx-build -b html docs docs/_build
 	@echo "Serving documentation at http://localhost:8000"
 	@cd docs/_build && python -m http.server 8000
 

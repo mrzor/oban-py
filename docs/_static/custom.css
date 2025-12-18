@@ -1,0 +1,15 @@
+/* Version switcher in sidebar - match search button styling */
+.sidebar-version-switcher {
+    margin-bottom: 0;
+}
+
+.sidebar-version-switcher .version-switcher__container {
+    width: 100%;
+}
+
+.sidebar-version-switcher button.version-switcher__button {
+    border-radius: 9999px;
+    padding: 0.5rem 1rem;
+    text-align: left;
+    width: 100%;
+}
