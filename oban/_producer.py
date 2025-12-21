@@ -66,6 +66,10 @@ async def _get_jobs(producer: Producer) -> list[Job]:
         return []
 
 
+def _dispatch(producer: Producer, job: Job) -> asyncio.Task:
+    return asyncio.create_task(producer._execute(job))
+
+
 @dataclass(frozen=True, slots=True)
 class QueueInfo:
     """Information about a queue's runtime state."""
@@ -262,7 +266,7 @@ class Producer:
         jobs = await self._get_jobs()
 
         for job in jobs:
-            task = asyncio.create_task(self._execute(job))
+            task = use_ext("producer.dispatch", _dispatch, self, job)
             task.add_done_callback(
                 lambda _, job_id=job.id: self._on_job_complete(job_id)
             )
