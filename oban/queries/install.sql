@@ -73,9 +73,6 @@ CREATE INDEX IF NOT EXISTS oban_jobs_staging_index
 ON oban_jobs (scheduled_at, id)
 WHERE state IN ('scheduled', 'retryable');
 
-CREATE INDEX IF NOT EXISTS oban_jobs_meta_index
-ON oban_jobs USING gin (meta);
-
 CREATE INDEX IF NOT EXISTS oban_jobs_completed_at_index
 ON oban_jobs (completed_at)
 WHERE state = 'completed';
