@@ -1,13 +1,13 @@
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/oban-bg/oban/main/assets/oban-logotype-dark.png">
-    <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/oban-bg/oban/main/assets/oban-logotype-light.png">
-    <img alt="Oban logo" src="https://raw.githubusercontent.com/oban-bg/oban/main/assets/oban-logotype-light.png" width="320">
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/oban-bg/oban-py/main/docs/_static/oban-logotype-dark.png">
+    <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/oban-bg/oban-py/main/docs/_static/oban-logotype-light.png">
+    <img alt="Oban logo" src="https://raw.githubusercontent.com/oban-bg/oban-py/main/docs/_static/oban-logotype-light.png" width="320">
   </picture>
 </p>
 
 <p align="center">
-  Oban is a robust job orchestration framework for Python, backed by PostgreSQL.
+  Oban is a sophisticated job orchestration framework for Python, backed by PostgreSQL.
   Reliable, <br /> observable, and loaded with <a href="#features">enterprise grade features</a>.
 </p>
 
@@ -31,7 +31,7 @@
 - [Oban Pro](#-oban-pro)
 - [Requirements](#requirements)
 - [Installation](#installation)
-- [Quick Getting Started](#quick-getting-started)
+- [Quick Start](#quick-start)
 - [Also Available](#also-available)
 - [Community](#community)
 - [Contributing](#contributing)
@@ -40,10 +40,11 @@
 
 > [!NOTE]
 >
-> This README is for the unreleased main branch, please reference the [official documentation]
-> [docs] for the latest stable release.
+> This README is for the unreleased main branch, please reference the [official docs][docs]
+> for the latest stable release.
 
-[docs]: https://oban.pro/docs/oban-py
+[docs]: https://oban.pro/docs/py
+[uv]: https://docs.astral.sh/uv/
 
 ---
 
@@ -116,9 +117,27 @@ without worrying about jobs being lost or orphaned due to crashes.
 - **Telemetry Integration** — Job life-cycle events are emitted via Telemetry integration.
   This enables simple logging, error reporting and health checkups without plug-ins.
 
-## Oban Pro
+## 🌟 Oban Pro
 
-An official set of extensions that expand what Oban is capable of are coming soon...
+Oban Pro is a licensed add-on that expands what Oban is capable of while making complex workflows
+possible.
+
+- **Optimizations** — Switch to Pro for automatic bulk inserts, bulk acking, and
+  accurate orphan rescue.
+
+- **Multi-Process Execution** — Bypass the GIL and utilize multiple cores for CPU-intensive
+  workloads. Just switch from `oban start` to `obanpro start`.
+
+- **Smart Concurrency** — Global limits across all nodes, rate limiting (e.g., 60 jobs/minute),
+  and partitioned queues that apply limits per worker, tenant, or any argument.
+
+- **Workflows** — Compose jobs with dependencies for sequential, fan-out, and fan-in patterns.
+  Sub-workflows, cascading functions, and runtime grafting for dynamic pipelines.
+
+- **Unique Jobs** — Prevent enqueueing duplicate jobs based on configurable fields and time
+  windows.
+
+[Learn more about Oban Pro →](https://oban.pro)
 
 ## Requirements
 
@@ -129,74 +148,85 @@ Oban requires:
 
 ## Installation
 
-See the [installation guide][install] for details on installing and configuring Oban in your
+See the [installation guide][docs] for details on installing and configuring Oban for your
 application.
 
-[install]: https://oban.pro/docs/oban-py
+## Quick Start
 
-## Quick Getting Started
+Get up and running in just a few steps: define a worker (or decorate a function), enqueue jobs,
+and start processing with the CLI (or embedded mode).
 
-1. Configure Oban with a connection pool and queues:
+1. Define a worker to process jobs:
 
    ```python
-   # app/oban.py
+   from oban import worker, Snooze, Cancel
+
+   @worker(queue="exports", max_attempts=5)
+   class ExportWorker:
+       async def process(self, job):
+           # Check if user cancelled their export request
+           if job.cancelled():
+               return Cancel("Export cancelled by user")
+
+           report = await generate_report(job.args["report_id"])
+
+           # Not ready? Check again in 30 seconds (doesn't count as a failure)
+           if report.status == "pending":
+               return Snooze(seconds=30)
+
+           await send_to_user(job.args["email"], report)
+   ```
+
+2. Enqueue jobs from anywhere in your app:
+
+   ```python
+   await ExportWorker.enqueue({"report_id": 123, "email": "user@example.com"})
+   ```
+
+3. Run with the CLI:
+
+   ```bash
+   # Install the database schema (once)
+   oban install --dsn postgresql://localhost/mydb
+
+   # Start processing jobs
+   oban start --dsn postgresql://localhost/mydb --queues exports:10
+   ```
+
+   Or embed in your application (FastAPI, Django, etc.):
+
+   ```python
    from oban import Oban
 
-   pool = await Oban.create_pool()
-   oban = Oban(pool=pool, queues={"mailers": 20})
-   ```
+   oban = Oban(pool=pool, queues={"exports": 10})
 
-2. Define a worker to process jobs in the `mailers` queue:
-
-   ```python
-   # app/workers.py
-   from oban import worker
-
-   @worker(queue="mailers")
-   class MailerWorker:
-       async def process(self, job):
-           email = job.args["email"]
-           await send_email(email)
-   ```
-
-3. Enqueue a job:
-
-   ```python
-   await MailerWorker.enqueue({"email": {"to": "user@example.com", "body": "Hello!"}})
-   ```
-
-4. Start processing jobs:
-
-   ```python
    async with oban:
-       await asyncio.Event().wait()  # Run until interrupted
+       ...  # Run your app
    ```
 
-The magic happens! Oban executes the job when there is available bandwidth in the
-`mailers` queue.
+For more details, see the [full documentation][docs].
 
 <!-- INDEX END -->
 
 ## Also Available
 
-- [Oban for Elixir][oban-elixir] — The original Oban, with support for PostgreSQL, MySQL, and SQLite3
+[Oban for Elixir][oban-elixir] — The original Oban, with support for PostgreSQL, MySQL, and SQLite3
+
+Oban for Python and Elixir are fully compatible — they share the same database schema and can
+run side-by-side, making it easy to use both languages in the same system.
 
 [oban-elixir]: https://github.com/oban-bg/oban
 
 ## Community
 
-There are a few places to connect and communicate with other Oban users:
+Submit bug reports and upcoming features in the [issue tracker][issues]
 
-- [Request an invitation][invite] and join the *#oban* channel on Slack
-- Learn about bug reports and upcoming features in the [issue tracker][issues]
-
-[invite]: https://elixir-slack.community/
 [issues]: https://github.com/oban-bg/oban-py/issues
 
 ## Contributing
 
-To run the Oban test suite you must have PostgreSQL 12+ running. Follow these steps to create the
-database and run all tests:
+To run the Oban test suite you must have Python 3.12+, PostgreSQL 14+, and [uv] installed. Follow
+these steps to create the database and run all tests:
 
 ```bash
 make test
