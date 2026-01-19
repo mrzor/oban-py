@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from typing import TYPE_CHECKING
 
 from . import telemetry
 from ._extensions import use_ext
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from ._leader import Leader
@@ -84,8 +87,8 @@ class Stager:
                 await self._stage()
             except asyncio.CancelledError:
                 break
-            except Exception:
-                pass
+            except Exception as error:
+                logger.warning("Stager failed to stage jobs: %s", error, exc_info=True)
 
             await asyncio.sleep(self._interval)
 
@@ -95,8 +98,11 @@ class Stager:
         if queue in self._producers:
             self._producers[queue].notify()
 
+    async def _noop(self, _query) -> None:
+        pass
+
     async def _stage(self) -> None:
-        await use_ext("stager.before_stage", lambda _query: None, self._query)
+        await use_ext("stager.before_stage", self._noop, self._query)
 
         with telemetry.span("oban.stager.stage", {}) as context:
             queues = list(self._producers.keys())
