@@ -3,7 +3,6 @@ from __future__ import annotations
 import re
 from collections import defaultdict
 from contextlib import asynccontextmanager
-from dataclasses import replace
 from datetime import datetime, timezone
 from functools import cache
 from importlib.resources import files
@@ -91,16 +90,13 @@ async def _insert_jobs(query: Query, jobs: list[Job]) -> list[Job]:
             result = await conn.execute(stmt, args)
             row = await result.fetchone()
 
-            inserted.append(
-                replace(
-                    job,
-                    id=row[0],
-                    inserted_at=row[1],
-                    queue=row[2],
-                    scheduled_at=row[3],
-                    state=row[4],
-                )
-            )
+            job.id = row[0]
+            job.inserted_at = row[1]
+            job.queue = row[2]
+            job.scheduled_at = row[3]
+            job.state = row[4]
+
+            inserted.append(job)
 
         return inserted
 
@@ -274,21 +270,18 @@ class Query:
                 result = await conn.execute(stmt, dict(args))
                 rows = await result.fetchall()
 
-                return [
-                    replace(
-                        job,
-                        args=row[0],
-                        max_attempts=row[1],
-                        meta=row[2],
-                        priority=row[3],
-                        queue=row[4],
-                        scheduled_at=row[5],
-                        state=row[6],
-                        tags=row[7],
-                        worker=row[8],
-                    )
-                    for job, row in zip(jobs, rows)
-                ]
+                for job, row in zip(jobs, rows):
+                    job.args = row[0]
+                    job.max_attempts = row[1]
+                    job.meta = row[2]
+                    job.priority = row[3]
+                    job.queue = row[4]
+                    job.scheduled_at = row[5]
+                    job.state = row[6]
+                    job.tags = row[7]
+                    job.worker = row[8]
+
+                return jobs
 
     # Leadership
 

@@ -16,7 +16,7 @@ from ._worker import register_worker, worker_name
 from ._scheduler import register_scheduled
 from .job import Job, Result
 
-JOB_FIELDS = set(Job.__dataclass_fields__.keys()) - {"extra"} | {"schedule_in"}
+JOB_FIELDS = set(Job.__slots__) - {"extra", "_cancellation"} | {"schedule_in"}
 
 
 def worker(*, oban: str = "oban", cron: str | dict | None = None, **overrides):
@@ -121,7 +121,7 @@ def worker(*, oban: str = "oban", cron: str | dict | None = None, **overrides):
             if extras:
                 merged["extra"] = extras
 
-            return Job.new(worker=worker_name(cls), args=args or {}, **merged)
+            return Job(worker_name(cls), args=args or {}, **merged)
 
         @classmethod
         async def enqueue(

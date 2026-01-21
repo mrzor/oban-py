@@ -604,7 +604,7 @@ class Oban:
         prevent concurrent modifications.
 
         Fields and Validations:
-            All changes are validated using the same validations as `Job.new()`. Only the
+            All changes are validated using the same validations as `Job()`. Only the
             following subset of fields can be updated:
 
             - args
@@ -670,7 +670,7 @@ class Oban:
         prevent concurrent modifications.
 
         Fields and Validations:
-            All changes are validated using the same validations as Job.new(). Only the
+            All changes are validated using the same validations as Job(). Only the
             following subset of fields can be updated:
 
             - args

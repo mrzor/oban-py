@@ -40,10 +40,10 @@ class TestExecutorTelemetry:
         stop_name, stop_meta = calls[1]
 
         assert start_name == "oban.job.start"
-        assert start_meta["job"] == job
+        assert start_meta["job"] is job
 
         assert stop_name == "oban.job.stop"
-        assert stop_meta["job"] == job
+        assert stop_meta["job"] is job
         assert stop_meta["state"] == "completed"
         assert stop_meta["duration"] > 0
         assert stop_meta["queue_time"] > 0
@@ -63,7 +63,7 @@ class TestExecutorTelemetry:
         exception_name, exception_meta = calls[0]
 
         assert exception_name == "oban.job.exception"
-        assert exception_meta["job"] == job
+        assert exception_meta["job"] is job
         assert exception_meta["state"] == "retryable"
         assert exception_meta["error_type"] == "ValueError"
         assert exception_meta["error_message"] == "Worker failed"
