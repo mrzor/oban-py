@@ -3,7 +3,6 @@ import pytest
 
 from oban import telemetry, worker
 from oban._producer import Producer
-from .helpers import with_backoff
 
 
 async def all_producers(conn):
@@ -131,4 +130,3 @@ class TestProducerAcks:
             fetched = await oban.get_job(job.id)
             assert fetched is not None
             assert fetched.state == "completed"
-
