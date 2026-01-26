@@ -166,6 +166,14 @@ class Producer:
             if not self._listen_token or not self._loop_task:
                 return
 
+            try:
+                await self._ack_jobs()
+            except Exception:
+                logger.debug(
+                    "Failed to flush pending ACKs for producer %s during shutdown",
+                    self._uuid,
+                )
+
             self._loop_task.cancel()
 
             await self._notifier.unlisten(self._listen_token)
@@ -262,10 +270,10 @@ class Producer:
         self._last_fetch_time = asyncio.get_event_loop().time()
 
     async def _produce(self) -> None:
+
         if self._paused or (self._limit - len(self._running_jobs)) <= 0:
             return
 
-        _ack = await self._ack_jobs()
         jobs = await self._get_jobs()
 
         for job in jobs:
