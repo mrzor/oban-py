@@ -47,7 +47,7 @@ INSERTABLE_FIELDS = [
 JSON_FIELDS = ["args", "error", "errors", "meta", "tags"]
 
 
-async def _unwrap_connection(conn: ConnectionLike) -> AsyncConnection | AsyncCursor:
+async def unwrap_connection(conn: ConnectionLike) -> AsyncConnection | AsyncCursor:
     # psycopg connection or cursor
     if isinstance(conn, (AsyncConnection, AsyncCursor)):
         return conn
@@ -135,7 +135,7 @@ async def _insert_jobs(
         return inserted
 
     if conn is not None:
-        return await inner_insert(await _unwrap_connection(conn))
+        return await inner_insert(await unwrap_connection(conn))
 
     async with query._pool.connection() as pool_conn:
         return await inner_insert(pool_conn)
