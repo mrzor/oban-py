@@ -439,13 +439,7 @@ class Oban:
 
             return jobs
 
-        result = await self._query.insert_jobs(jobs, conn=conn)
-
-        queues = {job.queue for job in result if job.state == "available"}
-
-        await self._notifier.notify("insert", [{"queue": queue} for queue in queues])
-
-        return result
+        return await self._query.insert_jobs(jobs, conn=conn)
 
     async def _execute_inline(self, jobs):
         from .testing import process_job
