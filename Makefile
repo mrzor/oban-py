@@ -1,4 +1,4 @@
-.PHONY: bench check ci db-reset db-setup db-teardown docs docs-clean docs-publish docs-serve fix format help test
+.PHONY: bench check ci db-reset db-setup db-teardown docs docs-clean docs-publish docs-serve fix format help release test
 
 API_BASE ?= https://oban.pro
 DSN_BASE ?= postgresql://postgres@localhost
@@ -19,6 +19,7 @@ help:
 	@echo "  docs-serve   - Serve documentation locally on port 8000"
 	@echo "  fix          - Fix linting issues automatically"
 	@echo "  format       - Format code with ruff"
+	@echo "  release      - Build and publish a release (requires VERSION=x.y.z)"
 	@echo "  test         - Run tests with pytest"
 
 check:
@@ -33,6 +34,20 @@ fix:
 
 format:
 	uv run ruff format .
+
+release: ci
+ifndef VERSION
+	$(error VERSION is required. Usage: make release VERSION=x.y.z)
+endif
+	rm -rf dist
+	uv version $(VERSION)
+	git add pyproject.toml uv.lock
+	git commit -m "Release v$(VERSION)"
+	git tag v$(VERSION)
+	uv build
+	uv publish
+	git push origin main --tags
+	$(MAKE) docs-publish
 
 test:
 	uv run pytest -s
