@@ -10,8 +10,10 @@ from typing import TYPE_CHECKING, Any
 from . import telemetry
 
 if TYPE_CHECKING:
+    from ._leader import Leader
     from ._notifier import Notifier
     from ._producer import Producer, QueueInfo
+    from ._query import Query
 
 
 # DDSketch with 2% relative error constants. These match what the `Sketch` module in
@@ -52,20 +54,25 @@ class Metrics:
     def __init__(
         self,
         *,
+        leader: Leader,
         name: str,
         node: str,
         notifier: Notifier,
         producers: dict[str, Producer],
+        query: Query,
         interval: float = 1.0,
     ) -> None:
+        self._leader = leader
         self._name = name
         self._node = node
         self._notifier = notifier
         self._producers = producers
+        self._query = query
         self._interval = interval
 
         self._buffer = defaultdict(list)
         self._buffer_lock = Lock()
+        self._counts = []
         self._handler_id = f"oban-metrics-{name}"
         self._loop_task = None
 
@@ -96,13 +103,17 @@ class Metrics:
     async def _loop(self) -> None:
         while True:
             try:
-                await self._broadcast_checks()
-                await self._broadcast_metrics()
+                await self.broadcast()
                 await asyncio.sleep(self._interval)
             except asyncio.CancelledError:
                 break
             except Exception:
                 pass
+
+    async def broadcast(self) -> None:
+        await self._gather_counts()
+        await self._broadcast_checks()
+        await self._broadcast_metrics()
 
     def _handle_job_event(self, _name: str, meta: dict[str, Any]) -> None:
         job = meta["job"]
@@ -118,6 +129,10 @@ class Metrics:
             self._buffer[("wait_time", state, queue, worker)].append(wait_time)
             self._buffer[("exec_count", state, queue, worker)].append(1)
 
+    async def _gather_counts(self) -> None:
+        if self._leader.is_leader:
+            self._counts = await self._query.count_jobs()
+
     async def _broadcast_checks(self) -> None:
         checks = [
             self._check_to_dict(prod.check()) for prod in self._producers.values()
@@ -129,9 +144,12 @@ class Metrics:
     async def _broadcast_metrics(self) -> None:
         with self._buffer_lock:
             buffer = self._buffer
-            self._buffer = defaultdict(list)
+            counts = self._counts
 
-        if not buffer:
+            self._buffer = defaultdict(list)
+            self._counts = []
+
+        if not buffer and not counts:
             return
 
         metrics = []
@@ -149,6 +167,16 @@ class Metrics:
                     "queue": queue,
                     "worker": worker,
                     "value": value,
+                }
+            )
+
+        for state, queue, count in counts:
+            metrics.append(
+                {
+                    "series": "full_count",
+                    "state": state,
+                    "queue": queue,
+                    "value": _build_gauge([count]),
                 }
             )
 

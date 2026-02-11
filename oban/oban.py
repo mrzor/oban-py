@@ -140,10 +140,12 @@ class Oban:
         if metrics is not None:
             metrics_config = {} if metrics is True else metrics
             self._metrics = Metrics(
+                leader=self._leader,
                 name=self._name,
                 node=self._node,
                 notifier=self._notifier,
                 producers=self._producers,
+                query=self._query,
                 **metrics_config,
             )
 

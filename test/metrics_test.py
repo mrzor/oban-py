@@ -12,34 +12,28 @@ class MetricsTestWorker:
         pass
 
 
+def build_metrics(interval=1.0):
+    return Metrics(
+        leader=None,
+        name="Oban",
+        node="worker.1",
+        notifier=None,
+        producers={},
+        query=None,
+        interval=interval,
+    )
+
+
 class TestMetricsValidation:
     def test_valid_config_passes(self):
-        Metrics(
-            name="Oban",
-            node="worker.1",
-            notifier=None,
-            producers={},
-            interval=1.0,
-        )
+        build_metrics(interval=1.0)
 
     def test_interval_must_be_positive(self):
         with pytest.raises(ValueError, match="interval must be positive"):
-            Metrics(
-                name="Oban",
-                node="worker.1",
-                notifier=None,
-                producers={},
-                interval=0,
-            )
+            build_metrics(interval=0)
 
         with pytest.raises(ValueError, match="interval must be positive"):
-            Metrics(
-                name="Oban",
-                node="worker.1",
-                notifier=None,
-                producers={},
-                interval=-1.0,
-            )
+            build_metrics(interval=-1.0)
 
 
 class TestMetricsConfig:
@@ -72,9 +66,9 @@ class TestMetricsBroadcast:
             await oban._notifier.listen("gossip", callback)
 
             # Trigger broadcast directly instead of waiting for loop
-            await oban._metrics._broadcast_checks()
+            await oban._metrics.broadcast()
 
-            channel, payload = await asyncio.wait_for(received.get(), timeout=1.0)
+            channel, payload = await asyncio.wait_for(received.get(), timeout=0.5)
 
             assert channel == "gossip"
             assert "checks" in payload
@@ -107,7 +101,7 @@ class TestMetricsBroadcast:
         async with oban_instance() as oban:
             await oban._notifier.listen("gossip", callback)
 
-            payload = await asyncio.wait_for(received.get(), timeout=1.0)
+            payload = await asyncio.wait_for(received.get(), timeout=0.5)
 
             assert "checks" in payload
             assert len(payload["checks"]) == 1
@@ -166,12 +160,12 @@ class TestJobMetricsBroadcast:
 
             # Enqueue and wait for job to complete
             await oban.enqueue(MetricsTestWorker.new({}))
-            await asyncio.sleep(0.1)
+            await asyncio.sleep(0.02)
 
             # Trigger metrics broadcast
-            await oban._metrics._broadcast_metrics()
+            await oban._metrics.broadcast()
 
-            payload = await asyncio.wait_for(received.get(), timeout=1.0)
+            payload = await asyncio.wait_for(received.get(), timeout=0.5)
 
             assert "metrics" in payload
             assert "name" in payload
@@ -191,17 +185,21 @@ class TestJobMetricsBroadcast:
                 assert "value" in metric
 
             # Verify exec_count uses Gauge format
-            exec_count = next(met for met in metrics if met["series"] == "exec_count")
+            exec_count = next(
+                metric for metric in metrics if metric["series"] == "exec_count"
+            )
             assert "data" in exec_count["value"]
             assert exec_count["value"]["data"] == [1]
 
             # Verify exec_time uses Sketch format
-            exec_time = next(met for met in metrics if met["series"] == "exec_time")
+            exec_time = next(
+                metric for metric in metrics if metric["series"] == "exec_time"
+            )
             assert "data" in exec_time["value"]
             assert "size" in exec_time["value"]
             assert exec_time["value"]["size"] == 1
 
-    @pytest.mark.oban(queues={"default": 1}, metrics={"interval": 60})
+    @pytest.mark.oban(queues={"default": 1}, metrics={"interval": 60}, leadership=False)
     async def test_no_metrics_broadcast_when_buffer_empty(self, oban_instance):
         received = asyncio.Queue()
 
@@ -211,8 +209,63 @@ class TestJobMetricsBroadcast:
         async with oban_instance() as oban:
             await oban._notifier.listen("metrics", callback)
 
-            # Broadcast with empty buffer should not send anything
-            await oban._metrics._broadcast_metrics()
+            # Broadcast with empty buffer (and no leadership) should not send metrics
+            await oban._metrics.broadcast()
 
             with pytest.raises(asyncio.TimeoutError):
-                await asyncio.wait_for(received.get(), timeout=0.1)
+                await asyncio.wait_for(received.get(), timeout=0.01)
+
+
+class TestFullCountMetrics:
+    @pytest.mark.oban(queues={"default": 1}, metrics=True, leadership=True)
+    async def test_broadcasts_full_counts_when_leader(self, oban_instance):
+        received = asyncio.Queue()
+
+        def callback(_channel, payload):
+            received.put_nowait(payload)
+
+        async with oban_instance() as oban:
+            await oban._notifier.listen("metrics", callback)
+
+            # Insert a job to have something to count
+            await oban.enqueue(MetricsTestWorker.new({}))
+            await asyncio.sleep(0.02)
+
+            # Broadcast metrics including full_counts
+            await oban._metrics.broadcast()
+
+            payload = await asyncio.wait_for(received.get(), timeout=0.5)
+            metrics = payload["metrics"]
+
+            # Find full_count metrics
+            full_counts = [met for met in metrics if met["series"] == "full_count"]
+            assert len(full_counts) > 0
+
+            for metric in full_counts:
+                assert "state" in metric
+                assert "queue" in metric
+                assert "value" in metric
+                assert "data" in metric["value"]
+
+    @pytest.mark.oban(queues={"default": 1}, metrics={"interval": 60}, leadership=False)
+    async def test_no_full_counts_when_not_leader(self, oban_instance):
+        received = asyncio.Queue()
+
+        def callback(_channel, payload):
+            received.put_nowait(payload)
+
+        async with oban_instance() as oban:
+            await oban._notifier.listen("metrics", callback)
+
+            # Insert a job
+            await oban.enqueue(MetricsTestWorker.new({}))
+            await asyncio.sleep(0.02)
+
+            # Broadcast should only have job metrics, no full_counts
+            await oban._metrics.broadcast()
+
+            payload = await asyncio.wait_for(received.get(), timeout=0.5)
+            metrics = payload["metrics"]
+
+            full_counts = [met for met in metrics if met["series"] == "full_count"]
+            assert len(full_counts) == 0
