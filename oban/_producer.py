@@ -103,6 +103,7 @@ class Producer:
         *,
         debounce_interval: float = 0.005,
         dispatcher: Any = None,
+        executor_opts: dict[str, Any] | None = None,
         limit: int = 10,
         paused: bool = False,
         queue: str = "default",
@@ -114,6 +115,7 @@ class Producer:
     ) -> None:
         self._debounce_interval = debounce_interval
         self._dispatcher = dispatcher or LocalDispatcher()
+        self._executor_opts = executor_opts or {}
         self._extra = extra
         self._limit = limit
         self._name = name
@@ -307,7 +309,7 @@ class Producer:
     async def _execute(self, job: Job) -> None:
         job._cancellation = asyncio.Event()
 
-        executor = await Executor(job=job, safe=True).execute()
+        executor = await Executor(job=job, safe=True, **self._executor_opts).execute()
 
         self._pending_acks.append(executor.action)
 

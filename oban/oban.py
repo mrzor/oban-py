@@ -36,6 +36,7 @@ class Oban:
         *,
         pool: Any,
         dispatcher: Any = None,
+        executor: dict[str, Any] = {},
         leadership: bool | None = None,
         lifeline: dict[str, Any] = {},
         metrics: dict[str, Any] | bool | None = None,
@@ -60,6 +61,7 @@ class Oban:
 
         Args:
             pool: Database connection pool (e.g., AsyncConnectionPool)
+            executor: Executor config options: errors_with_traceback (default: True)
             leadership: Enable leadership election (default: True if queues configured, False otherwise)
             lifeline: Lifeline config options: interval (default: 60.0)
             metrics: Metrics broadcasting for Oban Web integration. Disabled by default.
@@ -81,6 +83,7 @@ class Oban:
             leadership = bool(queues)
 
         self._dispatcher = dispatcher
+        self._executor = executor
         self._name = name or "oban"
         self._node = node or socket.gethostname()
         self._prefix = prefix or "public"
@@ -93,6 +96,7 @@ class Oban:
         self._producers = {
             queue: Producer(
                 dispatcher=self._dispatcher,
+                executor_opts=self._executor,
                 query=self._query,
                 name=self._name,
                 node=self._node,
@@ -1018,6 +1022,7 @@ class Oban:
 
         producer = Producer(
             dispatcher=self._dispatcher,
+            executor=self._executor,
             query=self._query,
             name=self._name,
             node=self._node,

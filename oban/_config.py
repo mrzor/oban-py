@@ -27,6 +27,7 @@ class Config:
     leadership: bool | None = None
 
     # Core loop configurations
+    executor: dict[str, Any] | None = None
     lifeline: dict[str, Any] | None = None
     metrics: dict[str, Any] | bool | None = None
     pruner: dict[str, Any] | None = None
@@ -158,6 +159,7 @@ class Config:
         extras = {
             key: getattr(self, key)
             for key in [
+                "executor",
                 "leadership",
                 "lifeline",
                 "metrics",

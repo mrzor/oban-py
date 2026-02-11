@@ -82,6 +82,29 @@ The `rescue_after` value should be longer than your longest-running job. If you 
 legitimately run for 10 minutes, set `rescue_after` to at least 15 minutes (900 seconds) to avoid
 premature rescue.
 
+## Error Storage
+
+By default, job errors include the full Python traceback in the database. This makes it possible to
+diagnose failures directly from the `oban_jobs.errors` column without needing access to application
+logs.
+
+To disable traceback storage (e.g. for high-volume systems where storage is a concern):
+
+```toml
+[executor]
+errors_with_traceback = false
+```
+
+Or programmatically when running embedded:
+
+```python
+oban = Oban(
+    pool=pool,
+    queues={"default": 10},
+    executor={"errors_with_traceback": False},
+)
+```
+
 ## Maintenance Guidelines
 
 - All limits are soft; jobs beyond a specified age may not be pruned immediately after jobs

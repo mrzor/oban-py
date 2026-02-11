@@ -35,9 +35,10 @@ class AckAction:
 
 
 class Executor:
-    def __init__(self, job: Job, safe: bool = True):
+    def __init__(self, job: Job, safe: bool = True, errors_with_traceback: bool = True):
         self.job = job
         self.safe = safe
+        self.errors_with_traceback = errors_with_traceback
 
         self.action = None
         self.result = None
@@ -181,8 +182,13 @@ class Executor:
         else:
             error_str = repr(error)
 
-        return {
+        entry = {
             "attempt": self.job.attempt,
             "at": datetime.now(timezone.utc).isoformat(),
             "error": error_str,
         }
+
+        if self.errors_with_traceback and self._traceback:
+            entry["traceback"] = self._traceback
+
+        return entry

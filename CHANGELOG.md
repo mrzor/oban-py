@@ -4,6 +4,16 @@ Oban is a robust job orchestration framework for Python, backed by PostgreSQL. T
 initial public release, bringing battle-tested patterns from Oban for Elixir to the Python
 ecosystem with an async-native, Pythonic API.
 
+## Unreleased
+
+### Enhancements
+
+- [Executor] Store Python traceback in job errors
+
+  Job error records now include a `traceback` field with the full formatted traceback, making it
+  possible to diagnose failures directly from the database. This is enabled by default and can be
+  disabled via `Oban(executor={"errors_with_traceback": False})`.
+
 ## v0.5.2 — 2025-02-05
 
 ### Enhancements

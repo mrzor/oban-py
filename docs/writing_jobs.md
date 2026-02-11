@@ -246,6 +246,7 @@ Each error record contains:
 - `attempt`: The attempt number when the error occurred
 - `at`: ISO 8601 timestamp of the failure
 - `error`: String representation of the exception
+- `traceback`: Full Python traceback (included by default, see [Error Storage](job_maintenance.md#error-storage))
 
 ## Retries and Backoff
 

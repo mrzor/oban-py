@@ -96,6 +96,52 @@ class TestExecutorTelemetry:
         assert "oban.job.exception" in calls
 
 
+class TestExecutorErrorsWithTraceback:
+    async def test_includes_traceback_in_error_by_default(self):
+        job = FailureWorker.new()
+
+        executor = await Executor(job, safe=True).execute()
+
+        error = executor.action.error
+        assert "traceback" in error
+        assert "ValueError" in error["traceback"]
+        assert "Worker failed" in error["traceback"]
+
+    async def test_includes_traceback_when_explicitly_enabled(self):
+        job = FailureWorker.new()
+
+        executor = await Executor(job, safe=True, errors_with_traceback=True).execute()
+
+        error = executor.action.error
+        assert "traceback" in error
+        assert "ValueError" in error["traceback"]
+
+    async def test_excludes_traceback_when_disabled(self):
+        job = FailureWorker.new()
+
+        executor = await Executor(job, safe=True, errors_with_traceback=False).execute()
+
+        error = executor.action.error
+        assert "traceback" not in error
+        assert "error" in error
+
+    async def test_no_traceback_for_cancel_reason(self):
+        from oban.job import Cancel
+
+        @worker()
+        class CancelWorker:
+            async def process(self, job):
+                return Cancel("not needed")
+
+        job = CancelWorker.new()
+
+        executor = await Executor(job, safe=True).execute()
+
+        error = executor.action.error
+        assert error["error"] == "not needed"
+        assert "traceback" not in error
+
+
 class TestExecutorCurrentJob:
     async def test_getting_current_job_from_context(self):
         current_job = None
