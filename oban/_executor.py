@@ -176,7 +176,9 @@ class Executor:
             return 0
 
     def _format_error(self, error: Exception | str) -> dict:
-        if isinstance(error, str):
+        if self._traceback:
+            error_str = self._traceback
+        elif isinstance(error, str):
             error_str = error
         else:
             error_str = repr(error)

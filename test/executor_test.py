@@ -80,6 +80,13 @@ class TestExecutorTelemetry:
         assert isinstance(executor.result, ValueError)
         assert str(executor.result) == "Worker failed"
 
+        error = executor.action.error
+
+        assert error["attempt"] == 0
+        assert "at" in error
+        assert "Traceback (most recent call last)" in error["error"]
+        assert "ValueError: Worker failed" in error["error"]
+
     async def test_unsafe_mode_still_emits_telemetry_before_reraise(self):
         calls = []
 
