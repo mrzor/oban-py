@@ -1122,7 +1122,7 @@ class Oban:
             return "any"
 
     async def _on_signal(self, _channel: str, payload: dict) -> None:
-        ident = payload.pop("ident")
+        ident = payload.pop("ident", "any")
 
         if ident != "any" and ident != f"{self._name}.{self._node}":
             return
