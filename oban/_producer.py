@@ -96,6 +96,9 @@ class QueueInfo:
     started_at: datetime | None
     """When the queue was started."""
 
+    uuid: str
+    """Unique identifier for this producer instance."""
+
 
 class Producer:
     def __init__(
@@ -236,6 +239,7 @@ class Producer:
             queue=self._queue,
             running=list(self._running_jobs.keys()),
             started_at=self._started_at,
+            uuid=self._uuid,
         )
 
     async def _loop(self) -> None:

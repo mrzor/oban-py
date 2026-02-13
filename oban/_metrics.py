@@ -250,6 +250,7 @@ class Metrics:
         started_at = check.started_at.isoformat() if check.started_at else None
 
         return {
+            "uuid": check.uuid,
             "node": check.node,
             "name": self._name,
             "queue": check.queue,
