@@ -19,7 +19,7 @@ from .job import Job, Result
 JOB_FIELDS = set(Job.__slots__) - {"extra", "_cancellation"} | {"schedule_in"}
 
 
-def worker(*, oban: str = "oban", cron: str | dict | None = None, **overrides):
+def worker(*, oban: str = "Oban", cron: str | dict | None = None, **overrides):
     """Decorate a class to make it a viable worker.
 
     The decorator adds worker functionality to a class, including job creation
@@ -28,7 +28,7 @@ def worker(*, oban: str = "oban", cron: str | dict | None = None, **overrides):
     For simpler function-based jobs, consider using @job instead.
 
     Args:
-        oban: Name of the Oban instance to use (default: "oban")
+        oban: Name of the Oban instance to use (default: "Oban")
         cron: Optional cron configuration for periodic execution. Can be:
               - A string expression (e.g., "0 0 \\* \\* \\*" or "@daily")
               - A dict with "expr" and optional "timezone" keys (timezone as string)
@@ -40,8 +40,8 @@ def worker(*, oban: str = "oban", cron: str | dict | None = None, **overrides):
     Example:
         >>> from oban import Oban, worker
         >>>
-        >>> # Create an Oban instance with a specific name
-        >>> oban_instance = Oban(name="oban", queues={"default": 10, "mailers": 5})
+        >>> # Create an Oban instance
+        >>> oban_instance = Oban(queues={"default": 10, "mailers": 5})
         >>>
         >>> @worker(queue="mailers", priority=1)
         ... class EmailWorker:
@@ -155,7 +155,7 @@ def worker(*, oban: str = "oban", cron: str | dict | None = None, **overrides):
     return decorate
 
 
-def job(*, oban: str = "oban", cron: str | dict | None = None, **overrides):
+def job(*, oban: str = "Oban", cron: str | dict | None = None, **overrides):
     """Decorate a function to make it an Oban job.
 
     The decorated function's signature is preserved for new() and enqueue().
@@ -164,7 +164,7 @@ def job(*, oban: str = "oban", cron: str | dict | None = None, **overrides):
     job metadata such as the attempt, past errors.
 
     Args:
-        oban: Name of the Oban instance to use (default: "oban")
+        oban: Name of the Oban instance to use (default: "Oban")
         cron: Optional cron configuration for periodic execution. Can be:
               - A string expression (e.g., "0 0 \\* \\* \\*" or "@daily")
               - A dict with "expr" and optional "timezone" keys (timezone as string)

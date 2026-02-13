@@ -29,7 +29,7 @@ class Leader:
         *,
         enabled: bool = True,
         interval: float = 30.0,
-        name: str = "oban",
+        name: str = "Oban",
         node: str,
         notifier: Notifier,
         query: Query,

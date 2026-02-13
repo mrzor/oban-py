@@ -81,7 +81,7 @@ class Oban:
             leadership = bool(queues)
 
         self._dispatcher = dispatcher
-        self._name = name or "oban"
+        self._name = name or "Oban"
         self._node = node or socket.gethostname()
         self._prefix = prefix or "public"
         self._query = Query(pool, self._prefix)
@@ -213,7 +213,7 @@ class Oban:
         return await config.create_pool()
 
     @classmethod
-    def get_instance(cls, name: str = "oban") -> Oban:
+    def get_instance(cls, name: str = "Oban") -> Oban:
         """Get the current Oban instance.
 
         This provides access to the Oban instance without needing to pass it around

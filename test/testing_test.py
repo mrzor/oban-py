@@ -232,7 +232,7 @@ class TestAssertEnqueued:
         await assert_enqueued(worker=Omega, args={})
         await assert_enqueued(worker=Omega, args={"id": 1})
         await assert_enqueued(worker=Omega, args={"id": 1, "xd": 2})
-        await assert_enqueued(worker=Omega, oban="oban")
+        await assert_enqueued(worker=Omega, oban="Oban")
 
     async def test_assert_enqueued_raises_on_no_match(self, oban_instance):
         @worker(queue="alpha")

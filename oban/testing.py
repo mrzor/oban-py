@@ -58,7 +58,7 @@ def _get_mode() -> str | None:
     return _testing_mode.get()
 
 
-async def reset_oban(oban: str | Oban = "oban"):
+async def reset_oban(oban: str | Oban = "Oban"):
     """Reset Oban tables between tests.
 
     Truncates all oban related tables with CASCADE and RESTART IDENTITY. Useful
@@ -89,7 +89,7 @@ async def reset_oban(oban: str | Oban = "oban"):
     await oban._query.reset()
 
 
-async def all_enqueued(*, oban: str | Oban = "oban", **filters) -> list[Job]:
+async def all_enqueued(*, oban: str | Oban = "Oban", **filters) -> list[Job]:
     """Retrieve all currently enqueued jobs matching a set of filters.
 
     Only jobs matching all of the provided filters will be returned. Additionally,
@@ -150,7 +150,7 @@ def _args_match(expected: dict, actual: dict) -> bool:
     return True
 
 
-async def assert_enqueued(*, oban: str | Oban = "oban", timeout: float = 0, **filters):
+async def assert_enqueued(*, oban: str | Oban = "Oban", timeout: float = 0, **filters):
     """Assert that a job matching the given criteria was enqueued.
 
     This helper queries the database for jobs in 'available' or 'scheduled' state
@@ -206,7 +206,7 @@ async def assert_enqueued(*, oban: str | Oban = "oban", timeout: float = 0, **fi
         )
 
 
-async def refute_enqueued(*, oban: str | Oban = "oban", timeout: float = 0, **filters):
+async def refute_enqueued(*, oban: str | Oban = "Oban", timeout: float = 0, **filters):
     """Assert that no job matching the given criteria was enqueued.
 
     This helper queries the database for jobs in 'available' or 'scheduled' state
@@ -258,7 +258,7 @@ async def refute_enqueued(*, oban: str | Oban = "oban", timeout: float = 0, **fi
 
 async def drain_queue(
     queue: str = "default",
-    oban: str | Oban = "oban",
+    oban: str | Oban = "Oban",
     with_recursion: bool = True,
     with_safety: bool = False,
     with_scheduled: bool = True,
