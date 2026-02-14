@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone, tzinfo
@@ -9,6 +10,8 @@ from zoneinfo import ZoneInfo
 
 from . import telemetry
 from ._worker import worker_name
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from .job import Job
@@ -318,6 +321,8 @@ class Scheduler:
                     await self._evaluate()
             except asyncio.CancelledError:
                 break
+            except Exception:
+                logger.exception("Error in scheduler")
 
     async def _evaluate(self) -> None:
         with telemetry.span("oban.scheduler.evaluate", {}) as context:
