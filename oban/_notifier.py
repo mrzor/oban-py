@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Any, Callable, Protocol, runtime_checkable
 from uuid import uuid4
 
 import orjson
-from psycopg import AsyncConnection, OperationalError
+from psycopg import AsyncConnection, InterfaceError, OperationalError
 
 from ._backoff import jittery_exponential
 
@@ -245,7 +245,7 @@ class PostgresNotifier:
 
         try:
             await self._connect()
-        except (OSError, OperationalError, asyncio.TimeoutError):
+        except (OSError, OperationalError, InterfaceError, asyncio.TimeoutError):
             asyncio.create_task(self._reconnect())
 
     async def _loop(self) -> None:
@@ -254,11 +254,14 @@ class PostgresNotifier:
 
         while True:
             try:
+                if self._conn.closed:
+                    raise InterfaceError("connection is closed")
+
                 await self._process_pending()
                 await self._process_notifications()
             except asyncio.CancelledError:
                 raise
-            except (OSError, OperationalError):
+            except (OSError, OperationalError, InterfaceError):
                 self._conn = None
                 asyncio.create_task(self._reconnect())
                 break
@@ -320,5 +323,8 @@ class PostgresNotifier:
 
             except asyncio.CancelledError:
                 raise
-            except (OSError, OperationalError):
-                pass
+            except (OSError, OperationalError, InterfaceError):
+                if self._conn:
+                    self._conn = None
+                    asyncio.create_task(self._reconnect())
+                break
