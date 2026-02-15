@@ -51,19 +51,22 @@ async def unwrap_connection(conn: ConnectionLike) -> AsyncConnection | AsyncCurs
     if isinstance(conn, (AsyncConnection, AsyncCursor)):
         return conn
 
-    # SQLAlchemy AsyncSession
-    if hasattr(conn, "connection") and not hasattr(conn, "get_raw_connection"):
+    # SQLAlchemy AsyncSession - get the underlying AsyncConnection first
+    if hasattr(conn, "get_bind"):
         conn = await conn.connection()
 
     # SQLAlchemy AsyncConnection
     if hasattr(conn, "get_raw_connection"):
-        raw = conn.get_raw_connection()
+        raw = await conn.get_raw_connection()
 
-        if driver := getattr(raw, "dbapi_connection", None):
-            return driver
-        if driver := getattr(raw, "driver_connection", None):
-            return driver
-        return raw
+        driver = getattr(raw, "dbapi_connection", None) or getattr(
+            raw, "driver_connection", None
+        )
+
+        if driver is None:
+            return raw
+
+        return getattr(driver, "_connection", None) or driver
 
     if hasattr(conn, "execute"):
         return conn

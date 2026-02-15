@@ -57,6 +57,7 @@ dev = [
     "pytest-asyncio>=1.2.0",
     "pytest-benchmark>=5.2.3",
     "ruff>=0.9.9",
+    "sqlalchemy[asyncio]>=2.0.0",
     "ty>=0.0.1a27",
 ]
 docs = [

@@ -2,6 +2,8 @@ import asyncio
 import pytest
 from datetime import datetime, timedelta, timezone
 
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+
 from .helpers import with_backoff
 from oban import Cancel, Record, Snooze, worker
 from oban._recorded import decode_recorded
@@ -107,6 +109,35 @@ class TestEnqueueMany:
 
             for job in jobs:
                 assert (await oban.get_job(job.id)) is not None
+
+
+class TestEnqueueWithSQLAlchemy:
+    async def test_enqueue_with_async_session(self, oban_instance, test_dsn):
+        sa_dsn = test_dsn.replace("postgresql://", "postgresql+psycopg://")
+        engine = create_async_engine(sa_dsn)
+        factory = async_sessionmaker(engine, class_=AsyncSession)
+
+        async with oban_instance() as oban:
+            async with factory() as session:
+                async with session.begin():
+                    job = await oban.enqueue(Worker.new({"ref": 1}), conn=session)
+
+            assert (await oban.get_job(job.id)) is not None
+
+        await engine.dispose()
+
+    async def test_enqueue_with_async_connection(self, oban_instance, test_dsn):
+        sa_dsn = test_dsn.replace("postgresql://", "postgresql+psycopg://")
+        engine = create_async_engine(sa_dsn)
+
+        async with oban_instance() as oban:
+            async with engine.connect() as conn:
+                async with conn.begin():
+                    job = await oban.enqueue(Worker.new({"ref": 1}), conn=conn)
+
+            assert (await oban.get_job(job.id)) is not None
+
+        await engine.dispose()
 
 
 class TestIntegration:
